@@ -1,0 +1,35 @@
+# FastAPI and Server
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+
+# Database
+sqlalchemy==2.0.25
+aiomysql==0.2.0
+alembic==1.13.1
+
+# Google APIs
+google-api-python-client==2.116.0
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.0
+
+# AI/ML Services
+openai==1.12.0
+google-generativeai==0.3.2
+
+# Audio Processing
+pydub==0.25.1
+pyannote.audio==3.1.1
+torch==2.2.0
+torchaudio==2.2.0
+
+# Utilities
+python-dotenv==1.0.1
+pydantic[email]==2.6.0
+pydantic-settings==2.1.0
+email-validator==2.1.0
+aiofiles==23.2.1
+httpx==0.26.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
