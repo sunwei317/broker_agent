@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
-import { Mail, Lock, Eye, EyeOff, User, Mic, CheckCircle2 } from 'lucide-react'
+import { Mail, Lock, Eye, EyeOff, User, Mic, CheckCircle2, XCircle, Check } from 'lucide-react'
 import { authApi } from '../api/auth'
 import Button from '../components/Button'
 
@@ -15,8 +15,21 @@ export default function Signup() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   
+  // Password validation rules
+  const passwordRules = useMemo(() => ({
+    minLength: password.length >= 8,
+    hasUppercase: /[A-Z]/.test(password),
+    hasLowercase: /[a-z]/.test(password),
+    hasNumber: /[0-9]/.test(password),
+    hasSymbol: /[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;'`~]/.test(password),
+  }), [password])
+  
+  const isPasswordValid = Object.values(passwordRules).every(Boolean)
+  const passwordsMatch = password === confirmPassword && confirmPassword.length > 0
+  const isFormValid = fullName.trim() && email && isPasswordValid && passwordsMatch
+  
   const signupMutation = useMutation({
-    mutationFn: () => authApi.signup({ email, password, full_name: fullName || undefined }),
+    mutationFn: () => authApi.signup({ email, password, full_name: fullName }),
     onSuccess: () => {
       setSuccess(true)
     },
@@ -29,13 +42,18 @@ export default function Signup() {
     e.preventDefault()
     setError('')
     
-    if (password !== confirmPassword) {
-      setError('Passwords do not match')
+    if (!fullName.trim()) {
+      setError('Full name is required')
       return
     }
     
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters')
+    if (!isPasswordValid) {
+      setError('Please meet all password requirements')
+      return
+    }
+    
+    if (!passwordsMatch) {
+      setError('Passwords do not match')
       return
     }
     
@@ -116,14 +134,16 @@ export default function Signup() {
               </motion.div>
             )}
             
+            {/* Full Name - Required */}
             <div>
               <label className="block text-sm font-medium text-midnight-300 mb-2">
-                Full name (optional)
+                Full name <span className="text-red-400">*</span>
               </label>
               <div className="relative">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-midnight-500" />
                 <input
                   type="text"
+                  required
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="John Doe"
@@ -132,9 +152,10 @@ export default function Signup() {
               </div>
             </div>
             
+            {/* Email */}
             <div>
               <label className="block text-sm font-medium text-midnight-300 mb-2">
-                Email address
+                Email address <span className="text-red-400">*</span>
               </label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-midnight-500" />
@@ -149,9 +170,10 @@ export default function Signup() {
               </div>
             </div>
             
+            {/* Password */}
             <div>
               <label className="block text-sm font-medium text-midnight-300 mb-2">
-                Password
+                Password <span className="text-red-400">*</span>
               </label>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-midnight-500" />
@@ -171,12 +193,22 @@ export default function Signup() {
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
-              <p className="text-xs text-midnight-500 mt-1">At least 8 characters</p>
+              
+              {/* Password Requirements */}
+              <div className="mt-3 space-y-1.5">
+                <p className="text-xs text-midnight-400 mb-2">Password must contain:</p>
+                <PasswordRule met={passwordRules.minLength} text="At least 8 characters" />
+                <PasswordRule met={passwordRules.hasUppercase} text="One uppercase letter (A-Z)" />
+                <PasswordRule met={passwordRules.hasLowercase} text="One lowercase letter (a-z)" />
+                <PasswordRule met={passwordRules.hasNumber} text="One number (0-9)" />
+                <PasswordRule met={passwordRules.hasSymbol} text="One symbol (!@#$%^&*...)" />
+              </div>
             </div>
             
+            {/* Confirm Password */}
             <div>
               <label className="block text-sm font-medium text-midnight-300 mb-2">
-                Confirm password
+                Confirm password <span className="text-red-400">*</span>
               </label>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-midnight-500" />
@@ -186,14 +218,36 @@ export default function Signup() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-12 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-midnight-500 focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/50"
+                  className={`w-full pl-12 pr-12 py-3 bg-white/5 border rounded-xl text-white placeholder-midnight-500 focus:outline-none focus:ring-1 ${
+                    confirmPassword.length === 0
+                      ? 'border-white/10 focus:border-gold-500/50 focus:ring-gold-500/50'
+                      : passwordsMatch
+                      ? 'border-emerald-500/50 focus:border-emerald-500 focus:ring-emerald-500/50'
+                      : 'border-red-500/50 focus:border-red-500 focus:ring-red-500/50'
+                  }`}
                 />
+                {confirmPassword.length > 0 && (
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                    {passwordsMatch ? (
+                      <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                    ) : (
+                      <XCircle className="w-5 h-5 text-red-400" />
+                    )}
+                  </div>
+                )}
               </div>
+              {confirmPassword.length > 0 && !passwordsMatch && (
+                <p className="text-xs text-red-400 mt-1">Passwords do not match</p>
+              )}
+              {confirmPassword.length > 0 && passwordsMatch && (
+                <p className="text-xs text-emerald-400 mt-1">Passwords match ✓</p>
+              )}
             </div>
             
             <Button
               type="submit"
               loading={signupMutation.isPending}
+              disabled={!isFormValid}
               className="w-full py-3"
             >
               Create account
@@ -214,3 +268,18 @@ export default function Signup() {
   )
 }
 
+// Password requirement indicator component
+function PasswordRule({ met, text }: { met: boolean; text: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      {met ? (
+        <Check className="w-3.5 h-3.5 text-emerald-400" />
+      ) : (
+        <div className="w-3.5 h-3.5 rounded-full border border-midnight-500" />
+      )}
+      <span className={`text-xs ${met ? 'text-emerald-400' : 'text-midnight-500'}`}>
+        {text}
+      </span>
+    </div>
+  )
+}

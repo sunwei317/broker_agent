@@ -35,6 +35,9 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GOOGLE_DRIVE_CREDENTIALS_PATH: /app/credentials/google_service_account.json
       GOOGLE_DRIVE_FOLDER_ID: ${GOOGLE_DRIVE_FOLDER_ID}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@axsparc.com}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       DEBUG: "false"
     ports:
       - "8000:8000"

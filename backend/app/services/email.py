@@ -14,9 +14,9 @@ class EmailService:
     
     def __init__(self):
         self.api_url = "https://api.resend.com/emails"
-        self.api_key = "re_AynMtgoU_HxA7dEeJY9jZScNoXBHpWesM"
-        self.from_email = "noreply@axsparc.com"  # Your verified domain
-        self.base_url = "http://localhost:3000"  # Frontend URL
+        self.api_key = settings.resend_api_key
+        self.from_email = settings.email_from
+        self.base_url = settings.frontend_url
     
     async def _send_email(
         self, 

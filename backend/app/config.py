@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     # Gemini
     gemini_api_key: str = ""
     
+    # Resend Email
+    resend_api_key: str = ""
+    email_from: str = "noreply@axsparc.com"
+    frontend_url: str = "http://localhost:3000"
+    
     # JWT
     secret_key: str = "your-secret-key-change-in-production"
     algorithm: str = "HS256"
