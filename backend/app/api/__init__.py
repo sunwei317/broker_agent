@@ -1,8 +1,9 @@
 from fastapi import APIRouter
-from app.api import clients, conversations, extractions, documents, processing
+from app.api import auth, clients, conversations, extractions, documents, processing
 
 api_router = APIRouter()
 
+api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(clients.router, prefix="/clients", tags=["clients"])
 api_router.include_router(conversations.router, prefix="/conversations", tags=["conversations"])
 api_router.include_router(extractions.router, prefix="/extractions", tags=["extractions"])

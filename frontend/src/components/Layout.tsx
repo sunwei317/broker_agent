@@ -2,12 +2,14 @@ import { motion } from 'framer-motion'
 import {
     FileCheck,
     LayoutDashboard,
+    LogOut,
     MessageSquare,
     Mic,
-    Settings,
+    User,
     Users
 } from 'lucide-react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useAuthStore } from '../store/authStore'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -17,6 +19,14 @@ const navItems = [
 ]
 
 export default function Layout() {
+  const navigate = useNavigate()
+  const { user, logout } = useAuthStore()
+  
+  const handleLogout = () => {
+    logout()
+    navigate('/login')
+  }
+  
   return (
     <div className="min-h-screen flex">
       {/* Sidebar */}
@@ -57,11 +67,30 @@ export default function Layout() {
           </ul>
         </nav>
         
-        {/* Footer */}
-        <div className="p-4 border-t border-white/10">
-          <button className="flex items-center gap-3 px-4 py-3 rounded-xl text-midnight-400 hover:bg-white/5 hover:text-white transition-all w-full">
-            <Settings className="w-5 h-5" />
-            <span className="font-medium">Settings</span>
+        {/* User & Footer */}
+        <div className="p-4 border-t border-white/10 space-y-2">
+          {/* User info */}
+          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/5">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-gold-500/30 to-gold-600/30 flex items-center justify-center">
+              <User className="w-4 h-4 text-gold-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-white truncate">
+                {user?.full_name || user?.email || 'User'}
+              </p>
+              {user?.full_name && (
+                <p className="text-xs text-midnight-500 truncate">{user.email}</p>
+              )}
+            </div>
+          </div>
+          
+          {/* Logout */}
+          <button 
+            onClick={handleLogout}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl text-midnight-400 hover:bg-red-500/10 hover:text-red-400 transition-all w-full"
+          >
+            <LogOut className="w-5 h-5" />
+            <span className="font-medium">Sign out</span>
           </button>
         </div>
       </aside>
@@ -80,4 +109,3 @@ export default function Layout() {
     </div>
   )
 }
-

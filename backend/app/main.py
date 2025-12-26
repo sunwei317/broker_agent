@@ -15,6 +15,7 @@ from app.models import (  # noqa: F401
     ActionItem,
     DocumentChecklist,
     DocumentItem,
+    User,
 )
 
 settings = get_settings()
