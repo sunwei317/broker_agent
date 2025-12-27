@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
   Check,
+  Trash2,
   X
 } from 'lucide-react'
 import { documentsApi, clientsApi } from '../api/client'
@@ -48,6 +49,20 @@ export default function Documents() {
   const updateItemMutation = useMutation({
     mutationFn: ({ id, status }: { id: number; status: string }) =>
       documentsApi.updateItem(id, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['checklists'] })
+    },
+  })
+  
+  const deleteItemMutation = useMutation({
+    mutationFn: (id: number) => documentsApi.deleteItem(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['checklists'] })
+    },
+  })
+  
+  const deleteChecklistMutation = useMutation({
+    mutationFn: (id: number) => documentsApi.deleteChecklist(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['checklists'] })
     },
@@ -161,6 +176,18 @@ export default function Documents() {
                       <span className="text-sm text-midnight-400">
                         {checklist.items.filter(i => i.status !== 'pending').length}/{checklist.items.length}
                       </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (confirm('Delete this checklist and all its documents?')) {
+                            deleteChecklistMutation.mutate(checklist.id)
+                          }
+                        }}
+                        className="p-2 text-midnight-500 hover:text-red-400 transition-colors"
+                        title="Delete checklist"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                   
@@ -213,6 +240,18 @@ export default function Documents() {
                               )}
                               
                               <StatusBadge status={item.status} size="sm" />
+                              
+                              <button
+                                onClick={() => {
+                                  if (confirm('Delete this document?')) {
+                                    deleteItemMutation.mutate(item.id)
+                                  }
+                                }}
+                                className="p-1 text-midnight-500 hover:text-red-400 transition-colors"
+                                title="Delete document"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
                           ))}
                         </div>

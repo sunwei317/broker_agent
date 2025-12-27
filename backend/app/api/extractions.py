@@ -1,11 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from datetime import datetime
 
 from app.database import get_db
 from app.models.extraction import MortgageExtraction, ActionItem
+from app.models.conversation import Conversation
+from app.models.document import DocumentChecklist, DocumentItem
 from app.schemas.extraction import (
     MortgageExtractionResponse,
     MortgageExtractionUpdate,

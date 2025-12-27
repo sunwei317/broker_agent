@@ -9,6 +9,7 @@ from app.database import get_db, AsyncSessionLocal
 from app.models.conversation import Conversation, TranscriptSegment, ConversationStatus
 from app.models.extraction import MortgageExtraction, ActionItem
 from app.models.client import Client
+from app.models.document import DocumentChecklist, DocumentItem
 from app.services.google_drive import google_drive_service
 from app.services.transcription import transcription_service
 from app.services.diarization import diarization_service
@@ -177,6 +178,48 @@ async def process_conversation_task(conversation_id: int):
                 print(f"   Loan Amount: {mortgage_data.get('loan_amount')}")
                 print(f"   Loan Term: {mortgage_data.get('loan_term_years')} years")
                 print(f"   Loan Type: {loan_type}")
+                
+                # Auto-create document checklist for client based on loan type
+                if conversation.client_id:
+                    from app.api.documents import LOAN_TYPE_DOCUMENTS
+                    
+                    # Check if a checklist already exists for this client + conversation
+                    existing_checklist = await db.execute(
+                        select(DocumentChecklist).where(
+                            DocumentChecklist.client_id == conversation.client_id,
+                            DocumentChecklist.conversation_id == conversation.id
+                        )
+                    )
+                    if not existing_checklist.scalar_one_or_none():
+                        # Create new checklist
+                        loan_type_key = loan_type.lower() if loan_type else 'conventional'
+                        default_docs = LOAN_TYPE_DOCUMENTS.get(loan_type_key, LOAN_TYPE_DOCUMENTS.get('conventional', []))
+                        
+                        checklist = DocumentChecklist(
+                            client_id=conversation.client_id,
+                            conversation_id=conversation.id,
+                            loan_type=loan_type,
+                            title=f"{loan_type.upper() if loan_type in ['fha', 'va'] else loan_type.capitalize()} Loan - Required Documents"
+                        )
+                        db.add(checklist)
+                        await db.flush()  # Get the checklist ID
+                        
+                        # Add document items
+                        for doc in default_docs:
+                            item = DocumentItem(
+                                checklist_id=checklist.id,
+                                name=doc.get('name', ''),
+                                description=doc.get('description', ''),
+                                category=doc.get('category', 'other'),
+                                is_required=1,
+                                status='pending'
+                            )
+                            db.add(item)
+                        
+                        print(f"\n📋 Created Document Checklist:")
+                        print(f"   Client ID: {conversation.client_id}")
+                        print(f"   Loan Type: {loan_type}")
+                        print(f"   Documents: {len(default_docs)} items")
             
             # Save action items
             for item in action_items:

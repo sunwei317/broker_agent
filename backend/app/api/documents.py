@@ -210,6 +210,25 @@ async def delete_item(
         raise HTTPException(status_code=404, detail="Item not found")
     
     await db.delete(item)
+    await db.commit()
+
+
+@router.delete("/checklists/{checklist_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_checklist(
+    checklist_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete an entire document checklist and all its items."""
+    result = await db.execute(
+        select(DocumentChecklist).where(DocumentChecklist.id == checklist_id)
+    )
+    checklist = result.scalar_one_or_none()
+    
+    if not checklist:
+        raise HTTPException(status_code=404, detail="Checklist not found")
+    
+    await db.delete(checklist)
+    await db.commit()
 
 
 @router.get("/loan-types")

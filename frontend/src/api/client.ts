@@ -201,8 +201,10 @@ export const documentsApi = {
   getChecklist: (id: number) => api.get<DocumentChecklist>(`/documents/checklists/${id}`),
   createChecklist: (data: { client_id: number; loan_type?: string; title?: string }) =>
     api.post<DocumentChecklist>('/documents/checklists', data),
+  deleteChecklist: (id: number) => api.delete(`/documents/checklists/${id}`),
   updateItem: (id: number, data: Partial<DocumentItem>) =>
     api.patch<DocumentItem>(`/documents/items/${id}`, data),
+  deleteItem: (id: number) => api.delete(`/documents/items/${id}`),
   getLoanTypeDocuments: () => api.get('/documents/loan-types'),
 }
 
