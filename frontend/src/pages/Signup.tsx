@@ -7,7 +7,8 @@ import { authApi } from '../api/auth'
 import Button from '../components/Button'
 
 export default function Signup() {
-  const [fullName, setFullName] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -26,10 +27,14 @@ export default function Signup() {
   
   const isPasswordValid = Object.values(passwordRules).every(Boolean)
   const passwordsMatch = password === confirmPassword && confirmPassword.length > 0
-  const isFormValid = fullName.trim() && email && isPasswordValid && passwordsMatch
+  const isFormValid = firstName.trim() && lastName.trim() && email && isPasswordValid && passwordsMatch
   
   const signupMutation = useMutation({
-    mutationFn: () => authApi.signup({ email, password, full_name: fullName }),
+    mutationFn: () => authApi.signup({ 
+      email, 
+      password, 
+      full_name: `${firstName.trim()} ${lastName.trim()}` 
+    }),
     onSuccess: () => {
       setSuccess(true)
     },
@@ -42,8 +47,13 @@ export default function Signup() {
     e.preventDefault()
     setError('')
     
-    if (!fullName.trim()) {
-      setError('Full name is required')
+    if (!firstName.trim()) {
+      setError('First name is required')
+      return
+    }
+    
+    if (!lastName.trim()) {
+      setError('Last name is required')
       return
     }
     
@@ -134,21 +144,38 @@ export default function Signup() {
               </motion.div>
             )}
             
-            {/* Full Name - Required */}
-            <div>
-              <label className="block text-sm font-medium text-midnight-300 mb-2">
-                Full name <span className="text-red-400">*</span>
-              </label>
-              <div className="relative">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-midnight-500" />
-                <input
-                  type="text"
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="John Doe"
-                  className="w-full pl-12 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-midnight-500 focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/50"
-                />
+            {/* First Name & Last Name - Required */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-midnight-300 mb-2">
+                  First name <span className="text-red-400">*</span>
+                </label>
+                <div className="relative">
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-midnight-500" />
+                  <input
+                    type="text"
+                    required
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="John"
+                    className="w-full pl-12 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-midnight-500 focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/50"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-midnight-300 mb-2">
+                  Last name <span className="text-red-400">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Doe"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-midnight-500 focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/50"
+                  />
+                </div>
               </div>
             </div>
             

@@ -16,6 +16,7 @@ import {
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { clientsApi, conversationsApi, extractionsApi, processingApi } from '../api/client'
+import { useAuthStore } from '../store/authStore'
 import Button from '../components/Button'
 import Card from '../components/Card'
 import StatusBadge from '../components/StatusBadge'
@@ -24,6 +25,7 @@ export default function ConversationDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const authUser = useAuthStore((state) => state.user)
   const [activeTab, setActiveTab] = useState<'transcript' | 'extraction' | 'actions'>('transcript')
   const [editingSegment, setEditingSegment] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
@@ -321,7 +323,7 @@ export default function ConversationDetail() {
                       <div
                         key={segment.id}
                         className={`p-4 rounded-xl ${
-                          segment.speaker === 'zach'
+                          segment.speaker === 'user'
                             ? 'bg-gold-500/10 border-l-2 border-gold-500'
                             : 'bg-blue-500/10 border-l-2 border-blue-500'
                         }`}
@@ -329,12 +331,12 @@ export default function ConversationDetail() {
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <User className={`w-4 h-4 ${
-                              segment.speaker === 'zach' ? 'text-gold-400' : 'text-blue-400'
+                              segment.speaker === 'user' ? 'text-gold-400' : 'text-blue-400'
                             }`} />
                             <span className={`text-sm font-medium ${
-                              segment.speaker === 'zach' ? 'text-gold-400' : 'text-blue-400'
+                              segment.speaker === 'user' ? 'text-gold-400' : 'text-blue-400'
                             }`}>
-                              {segment.speaker === 'zach' ? 'Zach (Broker)' : 'Client'}
+                              {segment.speaker === 'user' ? (authUser?.full_name || 'User') : 'Client'}
                             </span>
                             {segment.start_time !== undefined && (
                               <span className="text-xs text-midnight-500">

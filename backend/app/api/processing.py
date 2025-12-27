@@ -86,7 +86,7 @@ async def process_conversation_task(conversation_id: int):
             merged_segments = await diarization_service.merge_transcription_with_diarization(
                 transcription_result['segments'],
                 diarization_segments,
-                speaker_mapping={"SPEAKER_00": "zach", "SPEAKER_01": "client"}
+                speaker_mapping={"SPEAKER_00": "user", "SPEAKER_01": "client"}
             )
             print(f"   Merged into {len(merged_segments)} segments")
             

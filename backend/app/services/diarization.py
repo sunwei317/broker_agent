@@ -1,29 +1,31 @@
 import asyncio
+import json
 from typing import List, Dict, Any, Optional
-import os
+import google.generativeai as genai
+from app.config import get_settings
+
+settings = get_settings()
 
 
 class DiarizationService:
     """
-    Service for speaker diarization - separating Zach vs Client speech.
-    
-    This is a simplified implementation. For production, integrate with:
-    - PyAnnote Audio (pyannote.audio)
-    - Resemblyzer for speaker embeddings
+    Service for speaker diarization - separating User (broker) vs Client speech.
+    Uses Gemini AI to identify speakers based on conversation context.
     """
     
     def __init__(self):
-        self.pipeline = None
+        self.model = None
         self._initialized = False
     
     async def initialize(self):
-        """Initialize the diarization pipeline."""
+        """Initialize the Gemini AI model."""
         if self._initialized:
             return
         
-        # Note: Full PyAnnote implementation requires HuggingFace token
-        # and significant GPU resources. This is a placeholder for the MVP.
-        self._initialized = True
+        if settings.gemini_api_key:
+            genai.configure(api_key=settings.gemini_api_key)
+            self.model = genai.GenerativeModel(settings.gemini_model)
+            self._initialized = True
     
     async def diarize_audio(
         self,
@@ -32,38 +34,89 @@ class DiarizationService:
     ) -> List[Dict[str, Any]]:
         """
         Perform speaker diarization on an audio file.
+        For MVP, returns empty list - speaker identification is done via AI on transcript.
+        """
+        return []
+    
+    async def identify_speakers_from_transcript(
+        self,
+        segments: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Use Gemini AI to identify which segments are from the User (broker) vs Client.
         
-        For MVP, this returns a simplified structure.
-        Production implementation would use PyAnnote.
+        The User (broker) typically:
+        - Asks about loan requirements, income, employment
+        - Explains loan options, rates, terms
+        - Provides professional advice
+        - Uses mortgage terminology
         
-        Args:
-            audio_path: Path to the audio file
-            num_speakers: Expected number of speakers (default: 2 for Zach and Client)
-        
-        Returns:
-            List of speaker segments with start, end times and speaker labels
+        The Client typically:
+        - Answers questions about their situation
+        - Asks about rates, payments, process
+        - Provides personal/financial information
         """
         await self.initialize()
         
-        # Placeholder implementation for MVP
-        # In production, this would use pyannote.audio:
-        #
-        # from pyannote.audio import Pipeline
-        # pipeline = Pipeline.from_pretrained(
-        #     "pyannote/speaker-diarization-3.1",
-        #     use_auth_token="YOUR_HF_TOKEN"
-        # )
-        # diarization = pipeline(audio_path, num_speakers=num_speakers)
-        # 
-        # segments = []
-        # for turn, _, speaker in diarization.itertracks(yield_label=True):
-        #     segments.append({
-        #         'start': turn.start,
-        #         'end': turn.end,
-        #         'speaker': speaker
-        #     })
+        if not self.model or not segments:
+            return [{**seg, 'speaker': 'unknown'} for seg in segments]
         
-        return []
+        # Prepare transcript for analysis
+        transcript_text = "\n".join([
+            f"[{i}]: {seg.get('text', '')}"
+            for i, seg in enumerate(segments)
+        ])
+        
+        prompt = f"""Analyze this mortgage conversation transcript and identify which segments are spoken by the User (mortgage broker) and which by the Client.
+
+TRANSCRIPT (each line is numbered):
+{transcript_text}
+
+The User (broker) typically:
+- Asks about loan requirements, income, credit, employment
+- Explains loan options, interest rates, terms, processes
+- Provides professional mortgage advice
+- Uses industry terminology
+- Guides the conversation
+
+The Client typically:
+- Answers questions about their personal/financial situation
+- Asks about payments, rates, what they need to do
+- Provides information about their income, property, needs
+- Seeks clarification and advice
+
+For each segment number, respond with either "user" or "client".
+Respond ONLY with a valid JSON object mapping segment numbers to speakers.
+Example: {{"0": "user", "1": "client", "2": "user", "3": "client"}}
+"""
+        
+        try:
+            def _generate():
+                response = self.model.generate_content(prompt)
+                return response.text
+            
+            loop = asyncio.get_event_loop()
+            response_text = await loop.run_in_executor(None, _generate)
+            
+            # Parse the JSON response
+            cleaned = response_text.strip()
+            if cleaned.startswith('```'):
+                cleaned = cleaned.split('\n', 1)[1]
+                cleaned = cleaned.rsplit('```', 1)[0]
+            
+            speaker_map = json.loads(cleaned)
+            
+            # Apply speaker labels to segments
+            result = []
+            for i, seg in enumerate(segments):
+                speaker = speaker_map.get(str(i), 'unknown')
+                result.append({**seg, 'speaker': speaker})
+            
+            return result
+            
+        except Exception as e:
+            print(f"Speaker identification error: {e}")
+            return [{**seg, 'speaker': 'unknown'} for seg in segments]
     
     async def merge_transcription_with_diarization(
         self,
@@ -72,32 +125,21 @@ class DiarizationService:
         speaker_mapping: Optional[Dict[str, str]] = None
     ) -> List[Dict[str, Any]]:
         """
-        Merge transcription segments with speaker diarization results.
-        
-        Args:
-            transcription_segments: Segments from Whisper ASR
-            diarization_segments: Segments from diarization
-            speaker_mapping: Optional mapping like {"SPEAKER_00": "zach", "SPEAKER_01": "client"}
-        
-        Returns:
-            Merged segments with speaker labels and transcribed text
+        Merge transcription segments with speaker identification.
+        Uses AI to identify speakers if no diarization segments provided.
         """
         if not diarization_segments:
-            # If no diarization, return transcription segments with unknown speaker
-            return [
-                {**seg, 'speaker': 'unknown'}
-                for seg in transcription_segments
-            ]
+            # Use AI to identify speakers from transcript content
+            return await self.identify_speakers_from_transcript(transcription_segments)
         
+        # If we have diarization segments, merge them
         merged = []
         speaker_mapping = speaker_mapping or {}
         
         for trans_seg in transcription_segments:
             trans_start = trans_seg['start']
             trans_end = trans_seg['end']
-            trans_mid = (trans_start + trans_end) / 2
             
-            # Find the diarization segment that overlaps most with this transcription
             best_speaker = 'unknown'
             best_overlap = 0
             
@@ -105,7 +147,6 @@ class DiarizationService:
                 diar_start = diar_seg['start']
                 diar_end = diar_seg['end']
                 
-                # Calculate overlap
                 overlap_start = max(trans_start, diar_start)
                 overlap_end = min(trans_end, diar_end)
                 overlap = max(0, overlap_end - overlap_start)
@@ -114,7 +155,6 @@ class DiarizationService:
                     best_overlap = overlap
                     best_speaker = diar_seg['speaker']
             
-            # Apply speaker mapping if available
             mapped_speaker = speaker_mapping.get(best_speaker, best_speaker)
             
             merged.append({
@@ -123,38 +163,7 @@ class DiarizationService:
             })
         
         return merged
-    
-    async def identify_broker_voice(
-        self,
-        audio_path: str,
-        reference_audio_path: Optional[str] = None
-    ) -> str:
-        """
-        Identify which speaker is the broker (Zach) based on voice characteristics.
-        
-        This could use speaker embeddings (Resemblyzer) to match against
-        a reference recording of Zach's voice.
-        
-        Args:
-            audio_path: Path to the conversation audio
-            reference_audio_path: Optional path to Zach's reference voice sample
-        
-        Returns:
-            Speaker label that corresponds to Zach
-        """
-        # Placeholder - in production, use Resemblyzer:
-        #
-        # from resemblyzer import VoiceEncoder, preprocess_wav
-        # encoder = VoiceEncoder()
-        # 
-        # ref_wav = preprocess_wav(reference_audio_path)
-        # ref_embed = encoder.embed_utterance(ref_wav)
-        # 
-        # # Compare with each speaker's segments to find best match
-        
-        return "SPEAKER_00"
 
 
 # Singleton instance
 diarization_service = DiarizationService()
-
