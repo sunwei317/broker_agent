@@ -172,4 +172,5 @@ async def delete_action_item(
         raise HTTPException(status_code=404, detail="Action item not found")
     
     await db.delete(action)
+    await db.commit()
 

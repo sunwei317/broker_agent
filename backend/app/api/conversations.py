@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -31,17 +31,25 @@ async def create_conversation(
     conversation = Conversation(**conversation_data.model_dump())
     db.add(conversation)
     await db.commit()
-    await db.refresh(conversation)
+    
+    # Reload with segments relationship to avoid lazy loading issues
+    result = await db.execute(
+        select(Conversation)
+        .options(selectinload(Conversation.segments))
+        .where(Conversation.id == conversation.id)
+    )
+    conversation = result.scalar_one()
     return conversation
 
 
 @router.post("/upload", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
 async def upload_audio(
     file: UploadFile = File(...),
-    client_id: Optional[int] = None,
+    client_id: Optional[int] = Form(None),
     db: AsyncSession = Depends(get_db)
 ):
     """Upload an audio file and create a conversation record."""
+    print(f"📁 Upload request - client_id: {client_id}, filename: {file.filename}")
     # Validate file type
     if not file.filename.endswith(('.mp3', '.wav', '.m4a', '.ogg')):
         raise HTTPException(
@@ -72,7 +80,14 @@ async def upload_audio(
     )
     db.add(conversation)
     await db.commit()
-    await db.refresh(conversation)
+    
+    # Reload with segments relationship to avoid lazy loading issues
+    result = await db.execute(
+        select(Conversation)
+        .options(selectinload(Conversation.segments))
+        .where(Conversation.id == conversation.id)
+    )
+    conversation = result.scalar_one()
     
     return conversation
 
@@ -177,7 +192,11 @@ async def delete_conversation(
     
     # Delete the audio file if it exists
     if conversation.file_path and os.path.exists(conversation.file_path):
-        os.remove(conversation.file_path)
+        try:
+            os.remove(conversation.file_path)
+        except Exception as e:
+            print(f"Warning: Could not delete file {conversation.file_path}: {e}")
     
     await db.delete(conversation)
+    await db.commit()
 

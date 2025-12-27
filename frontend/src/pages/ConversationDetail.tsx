@@ -3,12 +3,10 @@ import { format } from 'date-fns'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
     ArrowLeft,
-    Briefcase,
     Calendar,
     CheckCircle2,
     DollarSign,
     Edit3,
-    Home,
     Mail,
     Play,
     Save,
@@ -16,8 +14,8 @@ import {
     X
 } from 'lucide-react'
 import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { conversationsApi, extractionsApi, processingApi } from '../api/client'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { clientsApi, conversationsApi, extractionsApi, processingApi } from '../api/client'
 import Button from '../components/Button'
 import Card from '../components/Card'
 import StatusBadge from '../components/StatusBadge'
@@ -30,11 +28,86 @@ export default function ConversationDetail() {
   const [editingSegment, setEditingSegment] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
   const [generatedEmail, setGeneratedEmail] = useState<{ subject: string; body: string } | null>(null)
+  const [highlightTerms, setHighlightTerms] = useState<string[]>([])
+  
+  // Helper to format number with variations for matching
+  const getNumberVariations = (num: number): string[] => {
+    const variations: string[] = []
+    variations.push(num.toString()) // 40000
+    variations.push(num.toLocaleString()) // 40,000
+    
+    // Handle thousands (40k, 40K)
+    if (num >= 1000) {
+      const k = num / 1000
+      if (Number.isInteger(k)) {
+        variations.push(`${k}k`)
+        variations.push(`${k}K`)
+        variations.push(`${k} thousand`)
+      }
+    }
+    
+    // Dollar amounts
+    variations.push(`$${num.toLocaleString()}`)
+    variations.push(`$${num}`)
+    
+    return variations
+  }
+  
+  // Function to go to transcript and highlight extraction data
+  const verifyInTranscript = (extraction: any) => {
+    const terms: string[] = []
+    
+    // Only highlight loan amount and loan term values
+    if (extraction.loan_amount) {
+      terms.push(...getNumberVariations(extraction.loan_amount))
+    }
+    if (extraction.loan_term_years) {
+      terms.push(`${extraction.loan_term_years} year`)
+      terms.push(`${extraction.loan_term_years}-year`)
+      terms.push(`${extraction.loan_term_years} years`)
+      terms.push(extraction.loan_term_years.toString())
+    }
+    
+    setHighlightTerms([...new Set(terms.filter(t => t && t.length > 1))])
+    setActiveTab('transcript')
+  }
+  
+  // Function to highlight text with search terms
+  const highlightText = (text: string) => {
+    if (!highlightTerms.length || !text) return text
+    
+    let result = text
+    
+    // Sort terms by length (longest first) to avoid partial replacements
+    const sortedTerms = [...highlightTerms].sort((a, b) => b.length - a.length)
+    
+    for (const term of sortedTerms) {
+      // Create case-insensitive regex with word boundaries where possible
+      const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const regex = new RegExp(`(${escapedTerm})`, 'gi')
+      
+      result = result.replace(regex, '<mark class="bg-gold-500/40 text-white px-1 rounded">$1</mark>')
+    }
+    
+    return result
+  }
   
   const { data: conversation, isLoading } = useQuery({
     queryKey: ['conversation', id],
     queryFn: () => conversationsApi.get(Number(id)).then(r => r.data),
     enabled: !!id,
+    // Auto-refresh every 3 seconds while processing
+    refetchInterval: (query) => {
+      const data = query.state.data
+      const isProcessing = data && ['transcribing', 'diarizing', 'extracting'].includes(data.status)
+      return isProcessing ? 3000 : false
+    },
+  })
+  
+  const { data: client } = useQuery({
+    queryKey: ['client', conversation?.client_id],
+    queryFn: () => clientsApi.get(conversation!.client_id!).then(r => r.data),
+    enabled: !!conversation?.client_id,
   })
   
   const { data: extractions } = useQuery({
@@ -114,9 +187,21 @@ export default function ConversationDetail() {
           <h1 className="font-display text-2xl font-bold text-white">
             {conversation.original_filename || `Conversation #${conversation.id}`}
           </h1>
-          <p className="text-midnight-400 text-sm mt-1">
-            {format(new Date(conversation.created_at), 'MMMM d, yyyy at h:mm a')}
-          </p>
+          <div className="flex items-center gap-3 mt-1">
+            {client && (
+              <Link 
+                to={`/clients/${client.id}`}
+                className="flex items-center gap-1.5 text-gold-400 hover:text-gold-300 text-sm font-medium"
+              >
+                <User className="w-4 h-4" />
+                {client.name}
+              </Link>
+            )}
+            {client && <span className="text-midnight-600">•</span>}
+            <span className="text-midnight-400 text-sm">
+              {format(new Date(conversation.created_at), 'MMM d, yyyy h:mm a')}
+            </span>
+          </div>
         </div>
         <StatusBadge status={conversation.status} />
         
@@ -192,9 +277,45 @@ export default function ConversationDetail() {
                 exit={{ opacity: 0, y: -10 }}
               >
                 <Card>
-                  <h2 className="font-display text-xl font-semibold text-white mb-4">
-                    Transcript
-                  </h2>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="font-display text-xl font-semibold text-white">
+                      Transcript
+                    </h2>
+                    {highlightTerms.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setHighlightTerms([])}
+                        className="text-gold-400"
+                      >
+                        <X className="w-4 h-4" />
+                        Clear highlights
+                      </Button>
+                    )}
+                  </div>
+                  
+                  {highlightTerms.length > 0 && extraction && (
+                    <div className="mb-4 p-3 rounded-xl bg-gold-500/10 border border-gold-500/30 text-gold-400 text-sm flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Highlighting extracted values. Review and verify the data is correct.</span>
+                      </div>
+                      {extraction.is_verified !== 1 && (
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            updateExtractionMutation.mutate({ extractionId: extraction.id, data: {} })
+                            setHighlightTerms([])
+                          }}
+                          loading={updateExtractionMutation.isPending}
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          Confirm Verified
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  
                   <div className="space-y-4">
                     {conversation.segments?.map((segment) => (
                       <div
@@ -267,9 +388,12 @@ export default function ConversationDetail() {
                             </div>
                           </div>
                         ) : (
-                          <p className="text-white">
-                            {segment.verified_text || segment.text}
-                          </p>
+                          <p 
+                            className="text-white"
+                            dangerouslySetInnerHTML={{ 
+                              __html: highlightText(segment.verified_text || segment.text || '') 
+                            }}
+                          />
                         )}
                       </div>
                     ))}
@@ -285,10 +409,9 @@ export default function ConversationDetail() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="grid grid-cols-1 md:grid-cols-2 gap-6"
               >
                 {/* Loan Details */}
-                <Card>
+                <Card className="max-w-md">
                   <div className="flex items-center gap-2 mb-4">
                     <DollarSign className="w-5 h-5 text-gold-400" />
                     <h3 className="font-display text-lg font-semibold text-white">Loan Details</h3>
@@ -296,82 +419,29 @@ export default function ConversationDetail() {
                       <CheckCircle2 className="w-4 h-4 text-emerald-400 ml-auto" />
                     )}
                   </div>
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center p-3 rounded-lg bg-white/5">
                       <span className="text-midnight-400">Loan Amount</span>
-                      <span className="text-white font-medium">{formatCurrency(extraction.loan_amount)}</span>
+                      <span className="text-white font-semibold text-lg">{formatCurrency(extraction.loan_amount)}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-midnight-400">Interest Rate</span>
-                      <span className="text-white font-medium">{extraction.interest_rate ? `${extraction.interest_rate}%` : '—'}</span>
-                    </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center p-3 rounded-lg bg-white/5">
                       <span className="text-midnight-400">Loan Term</span>
-                      <span className="text-white font-medium">{extraction.loan_term_years ? `${extraction.loan_term_years} years` : '—'}</span>
+                      <span className="text-white font-semibold text-lg">{extraction.loan_term_years ? `${extraction.loan_term_years} years` : '—'}</span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center p-3 rounded-lg bg-white/5">
                       <span className="text-midnight-400">Loan Type</span>
-                      <span className="text-white font-medium capitalize">{extraction.loan_type || '—'}</span>
+                      <span className="text-white font-semibold text-lg uppercase">{extraction.loan_type || '—'}</span>
                     </div>
                   </div>
-                  {extraction.is_verified !== 1 && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="mt-4 w-full"
-                      onClick={() => updateExtractionMutation.mutate({ extractionId: extraction.id, data: {} })}
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                      Verify
-                    </Button>
-                  )}
-                </Card>
-                
-                {/* Property Details */}
-                <Card>
-                  <div className="flex items-center gap-2 mb-4">
-                    <Home className="w-5 h-5 text-emerald-400" />
-                    <h3 className="font-display text-lg font-semibold text-white">Property Details</h3>
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-midnight-400">Property Type</span>
-                      <span className="text-white font-medium capitalize">{extraction.property_type || '—'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-midnight-400">Purchase Price</span>
-                      <span className="text-white font-medium">{formatCurrency(extraction.purchase_price)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-midnight-400">Down Payment</span>
-                      <span className="text-white font-medium">
-                        {formatCurrency(extraction.down_payment)}
-                        {extraction.down_payment_percentage && ` (${extraction.down_payment_percentage}%)`}
-                      </span>
-                    </div>
-                  </div>
-                </Card>
-                
-                {/* Borrower Details */}
-                <Card>
-                  <div className="flex items-center gap-2 mb-4">
-                    <Briefcase className="w-5 h-5 text-purple-400" />
-                    <h3 className="font-display text-lg font-semibold text-white">Borrower Details</h3>
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-midnight-400">Annual Income</span>
-                      <span className="text-white font-medium">{formatCurrency(extraction.borrower_income)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-midnight-400">Employment</span>
-                      <span className="text-white font-medium">{extraction.borrower_employment || '—'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-midnight-400">Credit Score</span>
-                      <span className="text-white font-medium">{extraction.credit_score_range || '—'}</span>
-                    </div>
-                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="mt-6 w-full"
+                    onClick={() => verifyInTranscript(extraction)}
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    {extraction.is_verified === 1 ? 'View in Transcript' : 'Verify in Transcript'}
+                  </Button>
                 </Card>
               </motion.div>
             )}

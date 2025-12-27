@@ -1,0 +1,29 @@
+Loan Expert: Good morning, this is Michael from Sunrise Finance. May I speak with Mr. Johnson?
+
+Customer: Speaking. Good morning.
+
+Loan Expert: Thank you for taking my call, Mr. Johnson. I’m calling to understand your loan needs and see how we can assist you. Is this a good time to talk?
+
+Customer: Yes, that’s fine.
+
+Loan Expert: Great. To begin with, could you please tell me the main purpose of the loan you’re considering?
+
+Customer: Sure. I’m planning to renovate my house, mainly the kitchen and bathrooms.
+
+Loan Expert: That sounds like a valuable improvement. Approximately how much funding do you think you’ll need for the renovation?
+
+Customer: I estimate around forty thousand dollars.
+
+Loan Expert: Understood. Is this amount based on contractor quotes, or is it a rough estimate?
+
+Customer: I’ve received two quotes already, so it’s fairly accurate.
+
+Loan Expert: That’s helpful. Do you have a preferred loan term, such as five or ten years?
+
+Customer: I’d prefer something around seven years, if possible.
+
+Loan Expert: Certainly. We have flexible options that may suit your needs. I’ll review some plans and follow up with you shortly.
+
+Customer: That sounds good. Thank you for your help.
+
+Loan Expert: You’re welcome, Mr. Johnson. Have a great day.

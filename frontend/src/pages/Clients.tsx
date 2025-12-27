@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
+  ChevronRight,
   Mail,
   MapPin,
   Phone,
@@ -12,15 +13,18 @@ import {
   X
 } from 'lucide-react'
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Client, clientsApi } from '../api/client'
 import Button from '../components/Button'
 import Card from '../components/Card'
 
 export default function Clients() {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [searchQuery, setSearchQuery] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [newClient, setNewClient] = useState({ name: '', email: '', phone: '', address: '' })
+  const [error, setError] = useState('')
   
   const { data: clients, isLoading } = useQuery({
     queryKey: ['clients'],
@@ -33,6 +37,10 @@ export default function Clients() {
       queryClient.invalidateQueries({ queryKey: ['clients'] })
       setShowModal(false)
       setNewClient({ name: '', email: '', phone: '', address: '' })
+      setError('')
+    },
+    onError: (err: any) => {
+      setError(err.response?.data?.detail || 'Failed to create client. Please try again.')
     },
   })
   
@@ -104,9 +112,13 @@ export default function Clients() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.05 }}
             >
-              <Card className="group relative">
+              <Card 
+                hover
+                onClick={() => navigate(`/clients/${client.id}`)}
+                className="group relative cursor-pointer"
+              >
                 <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-gold-500/20 to-gold-600/20 flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-gold-500/20 to-gold-600/20 flex items-center justify-center group-hover:from-gold-500/30 group-hover:to-gold-600/30 transition-all">
                     <User className="w-6 h-6 text-gold-400" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -130,13 +142,15 @@ export default function Clients() {
                       </div>
                     )}
                   </div>
+                  <ChevronRight className="w-5 h-5 text-midnight-500 group-hover:text-gold-400 transition-colors" />
                 </div>
                 <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
                   <span className="text-xs text-midnight-500">
                     Added {format(new Date(client.created_at), 'MMM d, yyyy')}
                   </span>
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation()
                       if (confirm('Delete this client?')) {
                         deleteMutation.mutate(client.id)
                       }
@@ -172,7 +186,7 @@ export default function Clients() {
               <div className="flex items-center justify-between mb-6">
                 <h2 className="font-display text-xl font-semibold text-white">Add New Client</h2>
                 <button
-                  onClick={() => setShowModal(false)}
+                  onClick={() => { setShowModal(false); setError(''); }}
                   className="p-2 text-midnight-400 hover:text-white"
                 >
                   <X className="w-5 h-5" />
@@ -182,10 +196,20 @@ export default function Clients() {
               <form
                 onSubmit={(e) => {
                   e.preventDefault()
+                  setError('')
                   createMutation.mutate(newClient)
                 }}
                 className="space-y-4"
               >
+                {error && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-3 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 text-sm"
+                  >
+                    {error}
+                  </motion.div>
+                )}
                 <div>
                   <label className="block text-sm text-midnight-400 mb-1">Name *</label>
                   <input

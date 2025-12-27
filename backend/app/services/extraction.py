@@ -21,7 +21,7 @@ class ExtractionService:
         
         if settings.gemini_api_key:
             genai.configure(api_key=settings.gemini_api_key)
-            self.model = genai.GenerativeModel('gemini-1.5-flash')
+            self.model = genai.GenerativeModel(settings.gemini_model)
             self._initialized = True
         else:
             raise ValueError("Gemini API key not configured")
@@ -41,41 +41,20 @@ class ExtractionService:
         """
         await self.initialize()
         
-        prompt = f"""Analyze this mortgage broker-client conversation transcript and extract all relevant mortgage information.
+        prompt = f"""Analyze this mortgage broker-client conversation transcript and extract the loan details.
 
 TRANSCRIPT:
 {transcript}
 
-Extract the following information if mentioned (return null if not found):
+Extract ONLY the following loan details (return null if not found):
 
-1. Loan Details:
-   - loan_amount: Dollar amount being requested
-   - interest_rate: Rate discussed
-   - loan_term_years: Loan term (15, 20, 30 years)
-   - loan_type: Type of loan (conventional, FHA, VA, USDA, jumbo, etc.)
-
-2. Property Details:
-   - property_type: Type of property (single-family, condo, townhouse, multi-family, etc.)
-   - property_address: Full or partial address mentioned
-   - purchase_price: Property price
-   - down_payment: Down payment amount discussed
-   - down_payment_percentage: Percentage of purchase price
-
-3. Borrower Details:
-   - borrower_income: Annual income mentioned
-   - borrower_employment: Employment type or employer
-   - credit_score_range: Credit score or range mentioned
-
-4. Additional Information:
-   - debt_to_income_ratio: If discussed
-   - property_taxes: Estimated property taxes
-   - insurance_estimate: Homeowner's insurance estimate
-   - pmi_required: Whether PMI is needed
-   - closing_cost_estimate: Estimated closing costs
+1. loan_amount: The dollar amount being requested for the loan (as a number, e.g., 450000)
+2. loan_term_years: The loan term in years (typically 15, 20, or 30)
+3. loan_type: The type of loan - MUST be one of: "conventional", "FHA", "VA", or "jumbo" (lowercase)
 
 Respond ONLY with a valid JSON object. Do not include markdown formatting or code blocks.
 Example format:
-{{"loan_amount": 450000, "interest_rate": 6.5, "loan_type": "conventional", ...}}
+{{"loan_amount": 450000, "loan_term_years": 30, "loan_type": "conventional"}}
 """
         
         def _generate():

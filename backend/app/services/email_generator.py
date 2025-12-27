@@ -40,7 +40,7 @@ class EmailGeneratorService:
         
         if settings.gemini_api_key:
             genai.configure(api_key=settings.gemini_api_key)
-            self.model = genai.GenerativeModel('gemini-1.5-flash')
+            self.model = genai.GenerativeModel(settings.gemini_model)
             self._initialized = True
         else:
             raise ValueError("Gemini API key not configured")

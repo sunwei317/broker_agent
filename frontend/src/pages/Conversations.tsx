@@ -7,11 +7,13 @@ import {
     Play,
     Search,
     Trash2,
-    Upload
+    Upload,
+    User,
+    X
 } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { conversationsApi, processingApi } from '../api/client'
+import { clientsApi, conversationsApi, processingApi } from '../api/client'
 import Button from '../components/Button'
 import Card from '../components/Card'
 import StatusBadge from '../components/StatusBadge'
@@ -22,16 +24,41 @@ export default function Conversations() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
+  const [showUploadModal, setShowUploadModal] = useState(false)
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [uploadError, setUploadError] = useState('')
   
   const { data: conversations, isLoading } = useQuery({
     queryKey: ['conversations', statusFilter],
     queryFn: () => conversationsApi.list(statusFilter ? { status: statusFilter } : undefined).then(r => r.data),
+    // Auto-refresh every 3 seconds if any conversation is processing
+    refetchInterval: (query) => {
+      const data = query.state.data
+      const hasProcessing = data?.some(c => 
+        ['transcribing', 'diarizing', 'extracting'].includes(c.status)
+      )
+      return hasProcessing ? 3000 : false
+    },
+  })
+  
+  const { data: clients } = useQuery({
+    queryKey: ['clients'],
+    queryFn: () => clientsApi.list().then(r => r.data),
   })
   
   const uploadMutation = useMutation({
-    mutationFn: (file: File) => conversationsApi.upload(file),
+    mutationFn: ({ file, clientId }: { file: File; clientId: number }) => 
+      conversationsApi.upload(file, clientId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversations'] })
+      setShowUploadModal(false)
+      setSelectedClientId(null)
+      setSelectedFile(null)
+      setUploadError('')
+    },
+    onError: (err: any) => {
+      setUploadError(err.response?.data?.detail || 'Upload failed. Please try again.')
     },
   })
   
@@ -49,17 +76,44 @@ export default function Conversations() {
     },
   })
   
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      await uploadMutation.mutateAsync(file)
+      setSelectedFile(file)
     }
+  }
+  
+  const handleUploadSubmit = () => {
+    if (!selectedClientId) {
+      setUploadError('Please select a client')
+      return
+    }
+    if (!selectedFile) {
+      setUploadError('Please select an audio file')
+      return
+    }
+    setUploadError('')
+    uploadMutation.mutate({ file: selectedFile, clientId: selectedClientId })
+  }
+  
+  const openUploadModal = () => {
+    setShowUploadModal(true)
+    setSelectedClientId(null)
+    setSelectedFile(null)
+    setUploadError('')
   }
   
   const filteredConversations = conversations?.filter(c => 
     !searchQuery || 
     c.original_filename?.toLowerCase().includes(searchQuery.toLowerCase())
   ) || []
+  
+  // Get client name by ID
+  const getClientName = (clientId?: number) => {
+    if (!clientId || !clients) return null
+    const client = clients.find(c => c.id === clientId)
+    return client?.name
+  }
   
   const formatDuration = (seconds?: number) => {
     if (!seconds) return '--:--'
@@ -78,17 +132,10 @@ export default function Conversations() {
             Manage and process your recorded conversations
           </p>
         </div>
-        <Button onClick={() => fileInputRef.current?.click()}>
+        <Button onClick={openUploadModal}>
           <Upload className="w-4 h-4" />
           Upload Audio
         </Button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".mp3,.wav,.m4a,.ogg"
-          onChange={handleFileSelect}
-          className="hidden"
-        />
       </div>
       
       {/* Filters */}
@@ -154,7 +201,7 @@ export default function Conversations() {
           <p className="text-midnight-400 mb-6">
             Upload your first audio file to get started
           </p>
-          <Button onClick={() => fileInputRef.current?.click()}>
+          <Button onClick={openUploadModal}>
             <Upload className="w-4 h-4" />
             Upload Audio
           </Button>
@@ -185,6 +232,15 @@ export default function Conversations() {
                       {conv.original_filename || `Conversation #${conv.id}`}
                     </h3>
                     <div className="flex items-center gap-4 mt-1 text-sm text-midnight-400">
+                      {conv.client_id && getClientName(conv.client_id) && (
+                        <>
+                          <span className="flex items-center gap-1">
+                            <User className="w-3 h-3" />
+                            {getClientName(conv.client_id)}
+                          </span>
+                          <span>•</span>
+                        </>
+                      )}
                       <span>{format(new Date(conv.created_at), 'MMM d, yyyy h:mm a')}</span>
                       <span>•</span>
                       <span>{formatDuration(conv.duration_seconds)}</span>
@@ -196,7 +252,7 @@ export default function Conversations() {
                   
                   {/* Actions */}
                   <div className="flex items-center gap-2">
-                    {conv.status === 'pending' && (
+                    {(conv.status === 'pending' || conv.status === 'failed') && (
                       <Button
                         variant="secondary"
                         size="sm"
@@ -230,7 +286,150 @@ export default function Conversations() {
           ))}
         </div>
       )}
+      
+      {/* Upload Modal */}
+      <AnimatePresence>
+        {showUploadModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50"
+            onClick={() => setShowUploadModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="glass rounded-2xl p-6 max-w-md w-full"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="font-display text-xl font-semibold text-white">Upload Conversation</h2>
+                <button
+                  onClick={() => setShowUploadModal(false)}
+                  className="p-2 text-midnight-400 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                {uploadError && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-3 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 text-sm"
+                  >
+                    {uploadError}
+                  </motion.div>
+                )}
+                
+                {/* Client Selection */}
+                <div>
+                  <label className="block text-sm text-midnight-400 mb-2">
+                    Select Client <span className="text-red-400">*</span>
+                  </label>
+                  {clients && clients.length > 0 ? (
+                    <select
+                      value={selectedClientId || ''}
+                      onChange={(e) => setSelectedClientId(Number(e.target.value) || null)}
+                      className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:border-gold-500/50"
+                    >
+                      <option value="">-- Select a client --</option>
+                      {clients.map((client) => (
+                        <option key={client.id} value={client.id}>
+                          {client.name} {client.email ? `(${client.email})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-sm">
+                      No clients found. Please{' '}
+                      <button
+                        onClick={() => {
+                          setShowUploadModal(false)
+                          navigate('/clients')
+                        }}
+                        className="underline hover:text-yellow-300"
+                      >
+                        add a client
+                      </button>{' '}
+                      first.
+                    </div>
+                  )}
+                </div>
+                
+                {/* File Selection */}
+                <div>
+                  <label className="block text-sm text-midnight-400 mb-2">
+                    Audio File <span className="text-red-400">*</span>
+                  </label>
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`
+                      border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all
+                      ${selectedFile 
+                        ? 'border-emerald-500/50 bg-emerald-500/10' 
+                        : 'border-white/20 hover:border-gold-500/50 hover:bg-white/5'
+                      }
+                    `}
+                  >
+                    {selectedFile ? (
+                      <div className="flex items-center justify-center gap-3">
+                        <FileAudio className="w-8 h-8 text-emerald-400" />
+                        <div className="text-left">
+                          <p className="text-white font-medium truncate max-w-[200px]">
+                            {selectedFile.name}
+                          </p>
+                          <p className="text-sm text-midnight-400">
+                            {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="w-10 h-10 text-midnight-500 mx-auto mb-2" />
+                        <p className="text-midnight-400">
+                          Click to select audio file
+                        </p>
+                        <p className="text-midnight-500 text-sm mt-1">
+                          MP3, WAV, M4A, OGG
+                        </p>
+                      </>
+                    )}
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".mp3,.wav,.m4a,.ogg"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                </div>
+                
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    onClick={handleUploadSubmit}
+                    loading={uploadMutation.isPending}
+                    disabled={!selectedClientId || !selectedFile}
+                    className="flex-1"
+                  >
+                    <Upload className="w-4 h-4" />
+                    Upload
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setShowUploadModal(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
-

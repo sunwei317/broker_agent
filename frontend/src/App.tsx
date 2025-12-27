@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
+import ClientDetail from './pages/ClientDetail'
 import Clients from './pages/Clients'
 import ConversationDetail from './pages/ConversationDetail'
 import Conversations from './pages/Conversations'
@@ -31,6 +32,7 @@ function App() {
         <Route path="conversations" element={<Conversations />} />
         <Route path="conversations/:id" element={<ConversationDetail />} />
         <Route path="clients" element={<Clients />} />
+        <Route path="clients/:id" element={<ClientDetail />} />
         <Route path="documents" element={<Documents />} />
       </Route>
     </Routes>

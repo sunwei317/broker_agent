@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from typing import List
 
 from app.database import get_db
@@ -16,11 +17,29 @@ async def create_client(
     db: AsyncSession = Depends(get_db)
 ):
     """Create a new client."""
-    client = Client(**client_data.model_dump())
-    db.add(client)
-    await db.commit()
-    await db.refresh(client)
-    return client
+    # Check if email already exists
+    if client_data.email:
+        existing = await db.execute(
+            select(Client).where(Client.email == client_data.email)
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A client with email '{client_data.email}' already exists"
+            )
+    
+    try:
+        client = Client(**client_data.model_dump())
+        db.add(client)
+        await db.commit()
+        await db.refresh(client)
+        return client
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A client with this email already exists"
+        )
 
 
 @router.get("", response_model=List[ClientResponse])

@@ -28,6 +28,10 @@ async def process_conversation_task(conversation_id: int):
     3. Entity extraction
     4. Action item extraction
     """
+    print(f"\n{'='*60}")
+    print(f"🎙️ STARTING PROCESSING for conversation {conversation_id}")
+    print(f"{'='*60}\n")
+    
     async with AsyncSessionLocal() as db:
         try:
             # Get the conversation
@@ -37,13 +41,18 @@ async def process_conversation_task(conversation_id: int):
             conversation = result.scalar_one_or_none()
             
             if not conversation:
+                print(f"❌ Conversation {conversation_id} not found")
                 return
+            
+            print(f"📁 File: {conversation.file_path}")
+            print(f"📄 Original filename: {conversation.original_filename}")
             
             # Update status to transcribing
             conversation.status = ConversationStatus.TRANSCRIBING
             await db.commit()
             
             # Step 1: Transcribe audio
+            print(f"\n📝 STEP 1: Transcribing audio with OpenAI Whisper...")
             transcription_result = await transcription_service.transcribe_with_segments(
                 conversation.file_path
             )
@@ -51,15 +60,27 @@ async def process_conversation_task(conversation_id: int):
             conversation.raw_transcript = transcription_result['text']
             conversation.duration_seconds = transcription_result.get('duration')
             
+            print(f"\n{'='*60}")
+            print(f"📝 TRANSCRIPTION RESULT:")
+            print(f"{'='*60}")
+            print(f"Duration: {transcription_result.get('duration', 'N/A')} seconds")
+            print(f"Language: {transcription_result.get('language', 'N/A')}")
+            print(f"\n--- FULL TRANSCRIPT ---")
+            print(transcription_result['text'])
+            print(f"--- END TRANSCRIPT ---\n")
+            print(f"Segments: {len(transcription_result.get('segments', []))} segments")
+            
             # Update status to diarizing
             conversation.status = ConversationStatus.DIARIZING
             await db.commit()
             
             # Step 2: Diarize (identify speakers)
+            print(f"\n🎭 STEP 2: Diarizing audio (identifying speakers)...")
             diarization_segments = await diarization_service.diarize_audio(
                 conversation.file_path,
                 num_speakers=2
             )
+            print(f"   Found {len(diarization_segments)} speaker segments")
             
             # Merge transcription with diarization
             merged_segments = await diarization_service.merge_transcription_with_diarization(
@@ -67,6 +88,17 @@ async def process_conversation_task(conversation_id: int):
                 diarization_segments,
                 speaker_mapping={"SPEAKER_00": "zach", "SPEAKER_01": "client"}
             )
+            print(f"   Merged into {len(merged_segments)} segments")
+            
+            # Print merged segments
+            print(f"\n--- DIARIZED TRANSCRIPT ---")
+            for seg in merged_segments[:10]:  # Show first 10 segments
+                speaker = seg.get('speaker', 'unknown').upper()
+                text = seg.get('text', '')
+                print(f"[{speaker}]: {text}")
+            if len(merged_segments) > 10:
+                print(f"... and {len(merged_segments) - 10} more segments")
+            print(f"--- END DIARIZED TRANSCRIPT ---\n")
             
             # Save transcript segments
             for seg in merged_segments:
@@ -85,39 +117,65 @@ async def process_conversation_task(conversation_id: int):
             await db.commit()
             
             # Step 3: Extract mortgage entities and action items
+            print(f"\n🔍 STEP 3: Extracting mortgage entities with Gemini AI...")
             extraction_result = await extraction_service.process_transcript(
                 transcription_result['text']
             )
             
-            # Save mortgage extraction
-            mortgage_data = extraction_result.get('mortgage_extraction', {})
+            # Print extraction results
+            print(f"\n{'='*60}")
+            print(f"🏠 MORTGAGE EXTRACTION RESULT:")
+            print(f"{'='*60}")
+            mortgage_data_raw = extraction_result.get('mortgage_extraction', {})
+            
+            # Flatten nested structure if present (loan_details, property_details, borrower_details)
+            mortgage_data = {}
+            if mortgage_data_raw:
+                for key, value in mortgage_data_raw.items():
+                    if isinstance(value, dict):
+                        # Flatten nested dict
+                        for nested_key, nested_value in value.items():
+                            mortgage_data[nested_key] = nested_value
+                            if nested_value is not None:
+                                print(f"   {nested_key}: {nested_value}")
+                    else:
+                        mortgage_data[key] = value
+                        if value is not None:
+                            print(f"   {key}: {value}")
+            
+            if not mortgage_data:
+                print("   No mortgage data extracted")
+            
+            print(f"\n📋 ACTION ITEMS:")
+            action_items = extraction_result.get('action_items', [])
+            for i, item in enumerate(action_items, 1):
+                if isinstance(item, dict):
+                    print(f"   {i}. [{item.get('priority', 'N/A').upper()}] {item.get('description', 'N/A')}")
+                    print(f"      Assignee: {item.get('assignee', 'N/A')}, Category: {item.get('category', 'N/A')}")
+            
+            # Save loan details extraction
             if mortgage_data and not mortgage_data.get('parse_error'):
+                # Normalize loan_type to one of: conventional, FHA, VA, jumbo
+                loan_type = mortgage_data.get('loan_type')
+                if loan_type:
+                    loan_type = loan_type.lower()
+                    if loan_type not in ['conventional', 'fha', 'va', 'jumbo']:
+                        loan_type = None  # Invalid type, set to null
+                
                 extraction = MortgageExtraction(
                     conversation_id=conversation.id,
                     loan_amount=mortgage_data.get('loan_amount'),
-                    interest_rate=mortgage_data.get('interest_rate'),
                     loan_term_years=mortgage_data.get('loan_term_years'),
-                    loan_type=mortgage_data.get('loan_type'),
-                    property_type=mortgage_data.get('property_type'),
-                    property_address=mortgage_data.get('property_address'),
-                    purchase_price=mortgage_data.get('purchase_price'),
-                    down_payment=mortgage_data.get('down_payment'),
-                    down_payment_percentage=mortgage_data.get('down_payment_percentage'),
-                    borrower_income=mortgage_data.get('borrower_income'),
-                    borrower_employment=mortgage_data.get('borrower_employment'),
-                    credit_score_range=mortgage_data.get('credit_score_range'),
-                    additional_data={
-                        k: v for k, v in mortgage_data.items()
-                        if k not in ['loan_amount', 'interest_rate', 'loan_term_years', 
-                                    'loan_type', 'property_type', 'property_address',
-                                    'purchase_price', 'down_payment', 'down_payment_percentage',
-                                    'borrower_income', 'borrower_employment', 'credit_score_range']
-                    }
+                    loan_type=loan_type,
                 )
                 db.add(extraction)
+                
+                print(f"\n💾 Saved Loan Details:")
+                print(f"   Loan Amount: {mortgage_data.get('loan_amount')}")
+                print(f"   Loan Term: {mortgage_data.get('loan_term_years')} years")
+                print(f"   Loan Type: {loan_type}")
             
             # Save action items
-            action_items = extraction_result.get('action_items', [])
             for item in action_items:
                 if isinstance(item, dict) and item.get('description'):
                     action = ActionItem(
@@ -130,16 +188,41 @@ async def process_conversation_task(conversation_id: int):
                     db.add(action)
             
             # Mark as completed
+            print(f"\n📝 Setting status to COMPLETED...")
             conversation.status = ConversationStatus.COMPLETED
             conversation.processed_at = datetime.now()
+            
+            print(f"   Committing to database...")
             await db.commit()
+            print(f"   ✓ Commit successful!")
+            
+            print(f"\n{'='*60}")
+            print(f"✅ PROCESSING COMPLETED for conversation {conversation_id}")
+            print(f"   Status: {conversation.status}")
+            print(f"{'='*60}\n")
             
         except Exception as e:
             # Mark as failed
-            conversation.status = ConversationStatus.FAILED
-            conversation.error_message = str(e)
-            await db.commit()
-            raise
+            print(f"\n{'='*60}")
+            print(f"❌ PROCESSING FAILED for conversation {conversation_id}")
+            print(f"Error: {str(e)}")
+            print(f"{'='*60}\n")
+            import traceback
+            traceback.print_exc()
+            
+            # Rollback any pending changes and re-fetch conversation
+            try:
+                await db.rollback()
+                result = await db.execute(
+                    select(Conversation).where(Conversation.id == conversation_id)
+                )
+                conversation = result.scalar_one_or_none()
+                if conversation:
+                    conversation.status = ConversationStatus.FAILED
+                    conversation.error_message = str(e)[:500]  # Limit error message length
+                    await db.commit()
+            except Exception as inner_e:
+                print(f"Failed to update conversation status: {inner_e}")
 
 
 @router.post("/conversations/{conversation_id}/process")
