@@ -35,6 +35,8 @@ export default function ConversationDetail() {
   const [editableSubject, setEditableSubject] = useState('')
   const [editableBody, setEditableBody] = useState('')
   const [emailSent, setEmailSent] = useState(false)
+  const [editingLoanType, setEditingLoanType] = useState(false)
+  const [selectedLoanType, setSelectedLoanType] = useState('')
   const [highlightTerms, setHighlightTerms] = useState<string[]>([])
   const [hasEdits, setHasEdits] = useState(false)
   
@@ -183,6 +185,16 @@ export default function ConversationDetail() {
       extractionsApi.updateMortgage(extractionId, { ...data, is_verified: 1 }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['extractions', id] })
+    },
+  })
+  
+  const updateLoanTypeMutation = useMutation({
+    mutationFn: ({ extractionId, loanType }: { extractionId: number; loanType: string }) =>
+      extractionsApi.updateMortgage(extractionId, { loan_type: loanType }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['extractions', id] })
+      queryClient.invalidateQueries({ queryKey: ['checklists'] })
+      setEditingLoanType(false)
     },
   })
   
@@ -488,7 +500,48 @@ export default function ConversationDetail() {
                     </div>
                     <div className="flex justify-between items-center p-3 rounded-lg bg-white/5">
                       <span className="text-midnight-400">Loan Type</span>
-                      <span className="text-white font-semibold text-lg uppercase">{extraction.loan_type || '—'}</span>
+                      {editingLoanType ? (
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={selectedLoanType}
+                            onChange={(e) => setSelectedLoanType(e.target.value)}
+                            className="px-3 py-1 bg-white/10 border border-white/20 rounded-lg text-white text-sm focus:outline-none focus:border-gold-500"
+                          >
+                            <option value="conventional">Conventional</option>
+                            <option value="fha">FHA</option>
+                            <option value="va">VA</option>
+                            <option value="jumbo">Jumbo</option>
+                          </select>
+                          <Button
+                            size="sm"
+                            onClick={() => updateLoanTypeMutation.mutate({ 
+                              extractionId: extraction.id, 
+                              loanType: selectedLoanType 
+                            })}
+                            loading={updateLoanTypeMutation.isPending}
+                          >
+                            <Save className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setEditingLoanType(false)}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setSelectedLoanType(extraction.loan_type || 'conventional')
+                            setEditingLoanType(true)
+                          }}
+                          className="flex items-center gap-2 text-white font-semibold text-lg uppercase hover:text-gold-400 transition-colors group"
+                        >
+                          {extraction.loan_type || '—'}
+                          <Edit3 className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </button>
+                      )}
                     </div>
                   </div>
                   <Button

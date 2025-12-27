@@ -65,7 +65,9 @@ async def update_mortgage_extraction(
     extraction_data: MortgageExtractionUpdate,
     db: AsyncSession = Depends(get_db)
 ):
-    """Update/verify a mortgage extraction."""
+    """Update/verify a mortgage extraction. If loan_type changes, update document checklist."""
+    from app.api.documents import LOAN_TYPE_DOCUMENTS
+    
     result = await db.execute(
         select(MortgageExtraction).where(MortgageExtraction.id == extraction_id)
     )
@@ -75,6 +77,8 @@ async def update_mortgage_extraction(
         raise HTTPException(status_code=404, detail="Extraction not found")
     
     update_data = extraction_data.model_dump(exclude_unset=True)
+    old_loan_type = extraction.loan_type
+    new_loan_type = update_data.get('loan_type')
     
     # Track verification
     if update_data.get('is_verified') == 1:
@@ -85,6 +89,85 @@ async def update_mortgage_extraction(
     
     await db.commit()
     await db.refresh(extraction)
+    
+    # If loan type changed, update the document checklist
+    if new_loan_type and new_loan_type != old_loan_type:
+        print(f"\n📋 Loan type changed from '{old_loan_type}' to '{new_loan_type}'")
+        
+        # Get the conversation to find client_id
+        conv_result = await db.execute(
+            select(Conversation).where(Conversation.id == extraction.conversation_id)
+        )
+        conversation = conv_result.scalar_one_or_none()
+        
+        if conversation and conversation.client_id:
+            # Find existing checklist for this conversation
+            checklist_result = await db.execute(
+                select(DocumentChecklist)
+                .options(selectinload(DocumentChecklist.items))
+                .where(
+                    DocumentChecklist.client_id == conversation.client_id,
+                    DocumentChecklist.conversation_id == conversation.id
+                )
+            )
+            existing_checklist = checklist_result.scalar_one_or_none()
+            
+            if existing_checklist:
+                # Delete old items
+                for item in existing_checklist.items:
+                    await db.delete(item)
+                
+                # Update checklist loan type and title
+                loan_type_display = new_loan_type.upper() if new_loan_type in ['fha', 'va'] else new_loan_type.capitalize()
+                existing_checklist.loan_type = new_loan_type
+                existing_checklist.title = f"{loan_type_display} Loan - Required Documents"
+                
+                # Add new items based on new loan type
+                loan_type_key = new_loan_type.lower()
+                default_docs = LOAN_TYPE_DOCUMENTS.get(loan_type_key, LOAN_TYPE_DOCUMENTS.get('conventional', []))
+                
+                for doc in default_docs:
+                    item = DocumentItem(
+                        checklist_id=existing_checklist.id,
+                        name=doc.get('name', ''),
+                        description=doc.get('description', ''),
+                        category=doc.get('category', 'other'),
+                        is_required=1,
+                        status='pending'
+                    )
+                    db.add(item)
+                
+                await db.commit()
+                print(f"   ✓ Updated document checklist with {len(default_docs)} items for {new_loan_type}")
+            else:
+                # Create new checklist
+                loan_type_key = new_loan_type.lower()
+                loan_type_display = new_loan_type.upper() if new_loan_type in ['fha', 'va'] else new_loan_type.capitalize()
+                default_docs = LOAN_TYPE_DOCUMENTS.get(loan_type_key, LOAN_TYPE_DOCUMENTS.get('conventional', []))
+                
+                checklist = DocumentChecklist(
+                    client_id=conversation.client_id,
+                    conversation_id=conversation.id,
+                    loan_type=new_loan_type,
+                    title=f"{loan_type_display} Loan - Required Documents"
+                )
+                db.add(checklist)
+                await db.flush()
+                
+                for doc in default_docs:
+                    item = DocumentItem(
+                        checklist_id=checklist.id,
+                        name=doc.get('name', ''),
+                        description=doc.get('description', ''),
+                        category=doc.get('category', 'other'),
+                        is_required=1,
+                        status='pending'
+                    )
+                    db.add(item)
+                
+                await db.commit()
+                print(f"   ✓ Created new document checklist with {len(default_docs)} items for {new_loan_type}")
+    
     return extraction
 
 
