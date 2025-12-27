@@ -9,6 +9,7 @@ import {
     Edit3,
     Mail,
     Play,
+    RefreshCw,
     Save,
     User,
     X
@@ -26,11 +27,12 @@ export default function ConversationDetail() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const authUser = useAuthStore((state) => state.user)
-  const [activeTab, setActiveTab] = useState<'transcript' | 'extraction' | 'actions'>('transcript')
+  const [activeTab, setActiveTab] = useState<'transcript' | 'extraction' | 'actions'>('extraction')
   const [editingSegment, setEditingSegment] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
   const [generatedEmail, setGeneratedEmail] = useState<{ subject: string; body: string } | null>(null)
   const [highlightTerms, setHighlightTerms] = useState<string[]>([])
+  const [hasEdits, setHasEdits] = useState(false)
   
   // Helper to format number with variations for matching
   const getNumberVariations = (num: number): string[] => {
@@ -144,6 +146,16 @@ export default function ConversationDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversation', id] })
       setEditingSegment(null)
+      setHasEdits(true) // Track that an edit was made
+    },
+  })
+  
+  const reExtractMutation = useMutation({
+    mutationFn: () => processingApi.reExtract(Number(id)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['extractions', id] })
+      setHasEdits(false) // Reset edits flag after re-extraction
+      setActiveTab('extraction') // Switch to extraction tab to show updated data
     },
   })
   
@@ -254,19 +266,26 @@ export default function ConversationDetail() {
       {conversation.status === 'completed' && (
         <>
           <div className="flex gap-2 border-b border-white/10 pb-1">
-            {(['transcript', 'extraction', 'actions'] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 font-medium rounded-t-lg transition-colors ${
-                  activeTab === tab
-                    ? 'bg-white/10 text-white border-b-2 border-gold-500'
-                    : 'text-midnight-400 hover:text-white'
-                }`}
-              >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </button>
-            ))}
+            {(['transcript', 'extraction', 'actions'] as const).map((tab) => {
+              const tabLabels: Record<string, string> = {
+                transcript: 'Transcript',
+                extraction: 'Loan',
+                actions: 'Actions'
+              }
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-4 py-2 font-medium rounded-t-lg transition-colors ${
+                    activeTab === tab
+                      ? 'bg-white/10 text-white border-b-2 border-gold-500'
+                      : 'text-midnight-400 hover:text-white'
+                  }`}
+                >
+                  {tabLabels[tab]}
+                </button>
+              )
+            })}
           </div>
           
           <AnimatePresence mode="wait">
@@ -315,6 +334,24 @@ export default function ConversationDetail() {
                           Confirm Verified
                         </Button>
                       )}
+                    </div>
+                  )}
+                  
+                  {/* Re-extract button - shows when transcript has been edited */}
+                  {hasEdits && (
+                    <div className="mb-4 p-3 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 text-sm flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Edit3 className="w-4 h-4" />
+                        <span>Transcript has been modified. Re-extract to update loan details.</span>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => reExtractMutation.mutate()}
+                        loading={reExtractMutation.isPending}
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                        Re-extract
+                      </Button>
                     </div>
                   )}
                   

@@ -165,6 +165,9 @@ export const conversationsApi = {
 
 export const processingApi = {
   processConversation: (id: number) => api.post(`/processing/conversations/${id}/process`),
+  reExtract: (id: number) => api.post<{ message: string; loan_details: any }>(
+    `/processing/conversations/${id}/re-extract`
+  ),
   generateEmail: (id: number) => api.post<{ subject: string; body: string }>(
     `/processing/conversations/${id}/generate-email`
   ),

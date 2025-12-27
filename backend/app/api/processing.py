@@ -156,11 +156,14 @@ async def process_conversation_task(conversation_id: int):
             # Save loan details extraction
             if mortgage_data and not mortgage_data.get('parse_error'):
                 # Normalize loan_type to one of: conventional, FHA, VA, jumbo
+                # Default to "conventional" if not detected or invalid
                 loan_type = mortgage_data.get('loan_type')
                 if loan_type:
                     loan_type = loan_type.lower()
                     if loan_type not in ['conventional', 'fha', 'va', 'jumbo']:
-                        loan_type = None  # Invalid type, set to null
+                        loan_type = 'conventional'  # Default to conventional if invalid
+                else:
+                    loan_type = 'conventional'  # Default to conventional if not detected
                 
                 extraction = MortgageExtraction(
                     conversation_id=conversation.id,
@@ -257,6 +260,105 @@ async def trigger_processing(
     background_tasks.add_task(process_conversation_task, conversation_id)
     
     return {"message": "Processing started", "conversation_id": conversation_id}
+
+
+@router.post("/conversations/{conversation_id}/re-extract")
+async def re_extract_from_transcript(
+    conversation_id: int,
+    db: AsyncSession = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Re-extract loan details from the (possibly modified) transcript.
+    Uses verified_text if available, otherwise uses original text.
+    """
+    # Get conversation with segments
+    result = await db.execute(
+        select(Conversation)
+        .options(selectinload(Conversation.segments))
+        .where(Conversation.id == conversation_id)
+    )
+    conversation = result.scalar_one_or_none()
+    
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    if conversation.status != ConversationStatus.COMPLETED:
+        raise HTTPException(
+            status_code=400,
+            detail="Conversation must be fully processed before re-extraction"
+        )
+    
+    # Build transcript from segments (use verified_text if available)
+    transcript_parts = []
+    for segment in sorted(conversation.segments, key=lambda s: s.start_time or 0):
+        text = segment.verified_text or segment.text or ""
+        if text.strip():
+            transcript_parts.append(text.strip())
+    
+    transcript = " ".join(transcript_parts)
+    
+    if not transcript:
+        raise HTTPException(status_code=400, detail="No transcript text available")
+    
+    print(f"\n🔄 RE-EXTRACTING loan details for conversation {conversation_id}")
+    print(f"   Transcript length: {len(transcript)} characters")
+    
+    # Run extraction
+    extraction_result = await extraction_service.extract_mortgage_entities(transcript)
+    
+    print(f"   Extraction result: {extraction_result}")
+    
+    # Flatten nested structure if present
+    mortgage_data = {}
+    if extraction_result:
+        for key, value in extraction_result.items():
+            if isinstance(value, dict):
+                for nested_key, nested_value in value.items():
+                    mortgage_data[nested_key] = nested_value
+            else:
+                mortgage_data[key] = value
+    
+    # Delete existing extractions for this conversation
+    existing = await db.execute(
+        select(MortgageExtraction).where(MortgageExtraction.conversation_id == conversation_id)
+    )
+    for ext in existing.scalars().all():
+        await db.delete(ext)
+    
+    # Save new extraction
+    if mortgage_data and not mortgage_data.get('parse_error'):
+        # Normalize loan_type, default to "conventional" if not detected or invalid
+        loan_type = mortgage_data.get('loan_type')
+        if loan_type:
+            loan_type = loan_type.lower()
+            if loan_type not in ['conventional', 'fha', 'va', 'jumbo']:
+                loan_type = 'conventional'  # Default to conventional if invalid
+        else:
+            loan_type = 'conventional'  # Default to conventional if not detected
+        
+        new_extraction = MortgageExtraction(
+            conversation_id=conversation.id,
+            loan_amount=mortgage_data.get('loan_amount'),
+            loan_term_years=mortgage_data.get('loan_term_years'),
+            loan_type=loan_type,
+        )
+        db.add(new_extraction)
+        
+        print(f"   💾 Saved new extraction:")
+        print(f"      Loan Amount: {mortgage_data.get('loan_amount')}")
+        print(f"      Loan Term: {mortgage_data.get('loan_term_years')} years")
+        print(f"      Loan Type: {loan_type}")
+    
+    await db.commit()
+    
+    return {
+        "message": "Re-extraction completed",
+        "loan_details": {
+            "loan_amount": mortgage_data.get('loan_amount'),
+            "loan_term_years": mortgage_data.get('loan_term_years'),
+            "loan_type": loan_type if mortgage_data else 'conventional',
+        }
+    }
 
 
 @router.post("/conversations/{conversation_id}/generate-email")
