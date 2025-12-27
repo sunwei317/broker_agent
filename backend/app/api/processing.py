@@ -367,6 +367,8 @@ async def generate_follow_up_email(
     db: AsyncSession = Depends(get_db)
 ) -> Dict[str, Any]:
     """Generate a follow-up email based on a processed conversation."""
+    from app.services.email_generator import get_documents_for_loan_type
+    
     # Get conversation with related data
     result = await db.execute(
         select(Conversation)
@@ -393,14 +395,25 @@ async def generate_follow_up_email(
     
     # Get mortgage data from first extraction
     mortgage_data = {}
+    loan_type = 'conventional'  # Default
     if conversation.extractions:
         ext = conversation.extractions[0]
+        loan_type = ext.loan_type or 'conventional'
         mortgage_data = {
             'loan_amount': ext.loan_amount,
-            'loan_type': ext.loan_type,
-            'interest_rate': ext.interest_rate,
-            'property_type': ext.property_type,
+            'loan_term_years': ext.loan_term_years,
+            'loan_type': loan_type,
         }
+    
+    # Get required documents based on loan type
+    loan_docs_info = get_documents_for_loan_type(loan_type)
+    required_documents = loan_docs_info.get('documents', [])
+    
+    print(f"\n📧 GENERATING EMAIL for conversation {conversation_id}")
+    print(f"   Client: {client_name}")
+    print(f"   Loan Type: {loan_type}")
+    print(f"   Loan Amount: {mortgage_data.get('loan_amount')}")
+    print(f"   Required Documents: {len(required_documents)} items")
     
     # Get action items
     action_items = [
@@ -408,15 +421,91 @@ async def generate_follow_up_email(
         for a in conversation.action_items
     ]
     
-    # Generate email
+    # Generate email with loan details and document requirements
     email = await email_generator_service.generate_follow_up_email(
         client_name=client_name,
         transcript=conversation.raw_transcript or "",
         mortgage_data=mortgage_data,
-        action_items=action_items
+        action_items=action_items,
+        required_documents=required_documents
     )
     
+    print(f"   ✓ Email generated successfully")
+    
     return email
+
+
+@router.post("/conversations/{conversation_id}/send-email")
+async def send_follow_up_email(
+    conversation_id: int,
+    email_data: Dict[str, str],
+    db: AsyncSession = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Send a follow-up email to the client and broker.
+    
+    Args:
+        conversation_id: The conversation ID
+        email_data: Dictionary with 'subject' and 'body' keys
+    """
+    from app.services.email import email_service
+    
+    # Get conversation with client info
+    result = await db.execute(
+        select(Conversation)
+        .options(selectinload(Conversation.client))
+        .where(Conversation.id == conversation_id)
+    )
+    conversation = result.scalar_one_or_none()
+    
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    subject = email_data.get('subject')
+    body = email_data.get('body')
+    broker_email = email_data.get('broker_email')
+    
+    if not subject or not body:
+        raise HTTPException(status_code=400, detail="Subject and body are required")
+    
+    # Collect recipient emails
+    recipients = []
+    
+    # Add client email if available
+    if conversation.client and conversation.client.email:
+        recipients.append(conversation.client.email)
+    
+    # Add broker email if provided
+    if broker_email:
+        recipients.append(broker_email)
+    
+    if not recipients:
+        raise HTTPException(status_code=400, detail="No recipient email addresses available")
+    
+    client_name = conversation.client.name if conversation.client else "Client"
+    
+    print(f"\n📧 SENDING FOLLOW-UP EMAIL for conversation {conversation_id}")
+    print(f"   Recipients: {recipients}")
+    print(f"   Subject: {subject}")
+    
+    # Send email
+    result = await email_service.send_follow_up_email(
+        to_emails=recipients,
+        subject=subject,
+        body=body
+    )
+    
+    if result['success']:
+        print(f"   ✓ Email sent successfully to {result['sent_to']}")
+    else:
+        print(f"   ✗ Some emails failed: {result['failed']}")
+    
+    return {
+        "message": "Email sent" if result['success'] else "Some emails failed",
+        "sent_to": result['sent_to'],
+        "failed": result['failed'],
+        "client_name": client_name
+    }
 
 
 @router.get("/google-drive/files")

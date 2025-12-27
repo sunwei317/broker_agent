@@ -211,5 +211,77 @@ The Broker Agent Team
         return await self._send_email(to_email, subject, html_content, text_content)
 
 
+    async def send_follow_up_email(
+        self,
+        to_emails: list[str],
+        subject: str,
+        body: str,
+        sender_name: str = "Broker Agent"
+    ) -> dict:
+        """
+        Send follow-up email to client and broker.
+        
+        Args:
+            to_emails: List of recipient emails (client and broker)
+            subject: Email subject
+            body: Email body (plain text, will be converted to HTML)
+            sender_name: Name to display in the from field
+        
+        Returns:
+            Dictionary with success status and details
+        """
+        # Convert plain text body to HTML
+        import re
+        
+        # Convert **bold** to <strong>bold</strong>
+        html_body = re.sub(r'\*\*(.+?)\*\*', r'<strong style="color: #0f172a;">\1</strong>', body)
+        
+        # Convert newlines to <br>
+        html_body = html_body.replace('\n', '<br>\n')
+        
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; margin: 0; padding: 40px 20px;">
+    <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        <div style="color: #1e293b; font-size: 16px; line-height: 1.8;">
+            {html_body}
+        </div>
+    </div>
+</body>
+</html>
+"""
+        
+        results = {
+            'success': True,
+            'sent_to': [],
+            'failed': [],
+            'errors': []
+        }
+        
+        for email in to_emails:
+            if not email:
+                continue
+            try:
+                print(f"📧 Sending follow-up email to {email}...")
+                success = await self._send_email(email, subject, html_content, body)
+                if success:
+                    results['sent_to'].append(email)
+                else:
+                    results['failed'].append(email)
+                    results['success'] = False
+            except Exception as e:
+                print(f"✗ Failed to send to {email}: {str(e)}")
+                results['failed'].append(email)
+                results['errors'].append(str(e))
+                results['success'] = False
+        
+        return results
+
+
 # Singleton instance
 email_service = EmailService()

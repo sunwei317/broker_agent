@@ -1,15 +1,19 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
+  Edit3,
   FileAudio,
   Mail,
   MapPin,
   Phone,
   Play,
-  User
+  Save,
+  User,
+  X
 } from 'lucide-react'
+import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { clientsApi, conversationsApi } from '../api/client'
 import Button from '../components/Button'
@@ -19,7 +23,13 @@ import StatusBadge from '../components/StatusBadge'
 export default function ClientDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const clientId = Number(id)
+  
+  const [isEditing, setIsEditing] = useState(false)
+  const [editEmail, setEditEmail] = useState('')
+  const [editPhone, setEditPhone] = useState('')
+  const [editAddress, setEditAddress] = useState('')
   
   const { data: client, isLoading: clientLoading } = useQuery({
     queryKey: ['client', clientId],
@@ -40,6 +50,36 @@ export default function ClientDetail() {
       return hasProcessing ? 3000 : false
     },
   })
+  
+  const updateMutation = useMutation({
+    mutationFn: (data: { email?: string; phone?: string; address?: string }) =>
+      clientsApi.update(clientId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client', clientId] })
+      setIsEditing(false)
+    },
+  })
+  
+  const startEditing = () => {
+    if (client) {
+      setEditEmail(client.email || '')
+      setEditPhone(client.phone || '')
+      setEditAddress(client.address || '')
+      setIsEditing(true)
+    }
+  }
+  
+  const cancelEditing = () => {
+    setIsEditing(false)
+  }
+  
+  const saveChanges = () => {
+    updateMutation.mutate({
+      email: editEmail || undefined,
+      phone: editPhone || undefined,
+      address: editAddress || undefined,
+    })
+  }
   
   const formatDuration = (seconds?: number) => {
     if (!seconds) return '--:--'
@@ -89,37 +129,107 @@ export default function ClientDetail() {
           <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-gold-500/20 to-gold-600/20 flex items-center justify-center">
             <User className="w-10 h-10 text-gold-400" />
           </div>
-          <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <h3 className="text-2xl font-semibold text-white">{client.name}</h3>
-              <p className="text-midnight-400 text-sm mt-1">
-                Added {format(new Date(client.created_at), 'MMMM d, yyyy')}
-              </p>
+          <div className="flex-1">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-2xl font-semibold text-white">{client.name}</h3>
+                <p className="text-midnight-400 text-sm mt-1">
+                  Added {format(new Date(client.created_at), 'MMMM d, yyyy')}
+                </p>
+              </div>
+              {!isEditing ? (
+                <Button variant="secondary" size="sm" onClick={startEditing}>
+                  <Edit3 className="w-4 h-4" />
+                  Edit
+                </Button>
+              ) : (
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={saveChanges} loading={updateMutation.isPending}>
+                    <Save className="w-4 h-4" />
+                    Save
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={cancelEditing}>
+                    <X className="w-4 h-4" />
+                    Cancel
+                  </Button>
+                </div>
+              )}
             </div>
-            <div className="space-y-2">
-              {client.email && (
+            
+            {isEditing ? (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm text-midnight-400 mb-1">Email</label>
+                  <div className="flex items-center gap-3">
+                    <Mail className="w-4 h-4 text-midnight-500" />
+                    <input
+                      type="email"
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                      placeholder="client@example.com"
+                      className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-midnight-500 focus:outline-none focus:border-gold-500/50"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm text-midnight-400 mb-1">Phone</label>
+                  <div className="flex items-center gap-3">
+                    <Phone className="w-4 h-4 text-midnight-500" />
+                    <input
+                      type="tel"
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                      placeholder="(555) 123-4567"
+                      className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-midnight-500 focus:outline-none focus:border-gold-500/50"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm text-midnight-400 mb-1">Address</label>
+                  <div className="flex items-center gap-3">
+                    <MapPin className="w-4 h-4 text-midnight-500" />
+                    <input
+                      type="text"
+                      value={editAddress}
+                      onChange={(e) => setEditAddress(e.target.value)}
+                      placeholder="123 Main St, City, State"
+                      className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-midnight-500 focus:outline-none focus:border-gold-500/50"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
                 <div className="flex items-center gap-3 text-midnight-300">
                   <Mail className="w-4 h-4 text-midnight-500" />
-                  <a href={`mailto:${client.email}`} className="hover:text-gold-400">
-                    {client.email}
-                  </a>
+                  {client.email ? (
+                    <a href={`mailto:${client.email}`} className="hover:text-gold-400">
+                      {client.email}
+                    </a>
+                  ) : (
+                    <span className="text-midnight-500 italic">No email</span>
+                  )}
                 </div>
-              )}
-              {client.phone && (
                 <div className="flex items-center gap-3 text-midnight-300">
                   <Phone className="w-4 h-4 text-midnight-500" />
-                  <a href={`tel:${client.phone}`} className="hover:text-gold-400">
-                    {client.phone}
-                  </a>
+                  {client.phone ? (
+                    <a href={`tel:${client.phone}`} className="hover:text-gold-400">
+                      {client.phone}
+                    </a>
+                  ) : (
+                    <span className="text-midnight-500 italic">No phone</span>
+                  )}
                 </div>
-              )}
-              {client.address && (
                 <div className="flex items-center gap-3 text-midnight-300">
                   <MapPin className="w-4 h-4 text-midnight-500" />
-                  <span>{client.address}</span>
+                  {client.address ? (
+                    <span>{client.address}</span>
+                  ) : (
+                    <span className="text-midnight-500 italic">No address</span>
+                  )}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </Card>

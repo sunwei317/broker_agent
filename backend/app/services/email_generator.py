@@ -6,6 +6,80 @@ from app.config import get_settings
 settings = get_settings()
 
 
+# Document requirements by loan type
+LOAN_TYPE_DOCUMENTS = {
+    'conventional': {
+        'name': 'Conventional Loan',
+        'documents': [
+            {'name': 'Government-issued ID', 'description': "Driver's license, passport, or state ID", 'category': 'identity'},
+            {'name': 'Social Security Card', 'description': 'For identity verification', 'category': 'identity'},
+            {'name': 'Pay Stubs', 'description': 'Last 30 days of pay stubs from all employers', 'category': 'income'},
+            {'name': 'W-2 Forms', 'description': 'W-2s from the past 2 years', 'category': 'income'},
+            {'name': 'Tax Returns', 'description': 'Federal tax returns (all pages) for the past 2 years', 'category': 'income'},
+            {'name': 'Bank Statements', 'description': 'Last 2-3 months of all bank account statements', 'category': 'assets'},
+            {'name': 'Investment Account Statements', 'description': 'Recent statements for 401k, IRA, stocks, etc.', 'category': 'assets'},
+            {'name': 'Proof of Down Payment', 'description': 'Documentation showing source of down payment funds', 'category': 'assets'},
+            {'name': 'Employment Verification', 'description': 'Letter from employer or recent employment contract', 'category': 'income'},
+            {'name': 'Credit Report Authorization', 'description': 'Signed authorization to pull credit report', 'category': 'credit'},
+        ]
+    },
+    'fha': {
+        'name': 'FHA Loan',
+        'documents': [
+            {'name': 'Government-issued ID', 'description': "Driver's license, passport, or state ID", 'category': 'identity'},
+            {'name': 'Social Security Card', 'description': 'For identity verification', 'category': 'identity'},
+            {'name': 'Pay Stubs', 'description': 'Last 30 days of pay stubs from all employers', 'category': 'income'},
+            {'name': 'W-2 Forms', 'description': 'W-2s from the past 2 years', 'category': 'income'},
+            {'name': 'Tax Returns', 'description': 'Federal tax returns (all pages) for the past 2 years', 'category': 'income'},
+            {'name': 'Bank Statements', 'description': 'Last 2-3 months of all bank account statements', 'category': 'assets'},
+            {'name': 'Proof of Down Payment', 'description': 'Minimum 3.5% down payment documentation', 'category': 'assets'},
+            {'name': 'Gift Letter', 'description': 'If using gift funds for down payment, letter from donor', 'category': 'assets'},
+            {'name': 'Employment Verification', 'description': 'Letter from employer confirming employment', 'category': 'income'},
+            {'name': 'Credit Explanation Letter', 'description': 'If applicable, explanation for any credit issues', 'category': 'credit'},
+            {'name': 'Residency History', 'description': 'Addresses for the past 2 years', 'category': 'identity'},
+        ]
+    },
+    'va': {
+        'name': 'VA Loan',
+        'documents': [
+            {'name': 'Certificate of Eligibility (COE)', 'description': 'VA Certificate of Eligibility', 'category': 'military'},
+            {'name': 'DD-214', 'description': 'Military discharge papers (if applicable)', 'category': 'military'},
+            {'name': 'Statement of Service', 'description': 'If currently active duty', 'category': 'military'},
+            {'name': 'Government-issued ID', 'description': "Driver's license, passport, or state ID", 'category': 'identity'},
+            {'name': 'Social Security Card', 'description': 'For identity verification', 'category': 'identity'},
+            {'name': 'Pay Stubs', 'description': 'Last 30 days of pay stubs or LES (Leave and Earnings Statement)', 'category': 'income'},
+            {'name': 'W-2 Forms', 'description': 'W-2s from the past 2 years', 'category': 'income'},
+            {'name': 'Tax Returns', 'description': 'Federal tax returns for the past 2 years', 'category': 'income'},
+            {'name': 'Bank Statements', 'description': 'Last 2-3 months of all bank account statements', 'category': 'assets'},
+            {'name': 'VA Funding Fee', 'description': 'Information about funding fee exemption if applicable', 'category': 'military'},
+        ]
+    },
+    'jumbo': {
+        'name': 'Jumbo Loan',
+        'documents': [
+            {'name': 'Government-issued ID', 'description': "Driver's license, passport, or state ID", 'category': 'identity'},
+            {'name': 'Social Security Card', 'description': 'For identity verification', 'category': 'identity'},
+            {'name': 'Pay Stubs', 'description': 'Last 30-60 days of pay stubs from all employers', 'category': 'income'},
+            {'name': 'W-2 Forms', 'description': 'W-2s from the past 2-3 years', 'category': 'income'},
+            {'name': 'Tax Returns', 'description': 'Complete federal tax returns for the past 2-3 years', 'category': 'income'},
+            {'name': 'Bank Statements', 'description': 'Last 3-6 months of all bank account statements', 'category': 'assets'},
+            {'name': 'Investment Account Statements', 'description': 'Complete statements for all investment accounts', 'category': 'assets'},
+            {'name': 'Additional Asset Documentation', 'description': 'Documentation for significant assets (real estate, businesses)', 'category': 'assets'},
+            {'name': 'Proof of Reserves', 'description': '6-12 months of mortgage payment reserves required', 'category': 'assets'},
+            {'name': 'Employment Verification', 'description': 'Detailed employment history and income verification', 'category': 'income'},
+            {'name': 'Credit Report Authorization', 'description': 'Signed authorization for credit check', 'category': 'credit'},
+            {'name': 'Business Tax Returns', 'description': 'If self-employed, business returns for 2-3 years', 'category': 'income'},
+        ]
+    }
+}
+
+
+def get_documents_for_loan_type(loan_type: str) -> Dict[str, Any]:
+    """Get the required documents for a specific loan type."""
+    loan_type_lower = (loan_type or 'conventional').lower()
+    return LOAN_TYPE_DOCUMENTS.get(loan_type_lower, LOAN_TYPE_DOCUMENTS['conventional'])
+
+
 # Default email template - can be customized by Zach
 DEFAULT_FOLLOW_UP_TEMPLATE = """
 Dear {client_name},
@@ -51,6 +125,7 @@ class EmailGeneratorService:
         transcript: str,
         mortgage_data: Dict[str, Any],
         action_items: List[Dict[str, Any]],
+        required_documents: Optional[List[Dict[str, str]]] = None,
         template: Optional[str] = None
     ) -> Dict[str, str]:
         """
@@ -61,6 +136,7 @@ class EmailGeneratorService:
             transcript: Conversation transcript
             mortgage_data: Extracted mortgage entities
             action_items: Extracted action items
+            required_documents: List of required documents based on loan type
             template: Optional custom email template
         
         Returns:
@@ -76,44 +152,69 @@ class EmailGeneratorService:
         
         # Format mortgage data
         mortgage_summary = []
+        loan_type = mortgage_data.get('loan_type', 'conventional')
+        loan_type_display = loan_type.upper() if loan_type in ['fha', 'va'] else loan_type.capitalize()
+        
         if mortgage_data.get('loan_amount'):
             mortgage_summary.append(f"Loan Amount: ${mortgage_data['loan_amount']:,.0f}")
-        if mortgage_data.get('loan_type'):
-            mortgage_summary.append(f"Loan Type: {mortgage_data['loan_type']}")
+        if loan_type:
+            mortgage_summary.append(f"Loan Type: {loan_type_display}")
+        if mortgage_data.get('loan_term_years'):
+            mortgage_summary.append(f"Loan Term: {mortgage_data['loan_term_years']} years")
         if mortgage_data.get('interest_rate'):
             mortgage_summary.append(f"Interest Rate: {mortgage_data['interest_rate']}%")
-        if mortgage_data.get('property_type'):
-            mortgage_summary.append(f"Property Type: {mortgage_data['property_type']}")
         
         mortgage_text = "\n".join(mortgage_summary) if mortgage_summary else "To be determined based on your application"
+        
+        # Format required documents
+        if required_documents:
+            docs_by_category = {}
+            for doc in required_documents:
+                category = doc.get('category', 'other').capitalize()
+                if category not in docs_by_category:
+                    docs_by_category[category] = []
+                docs_by_category[category].append(f"  • {doc['name']}: {doc.get('description', '')}")
+            
+            docs_text_parts = []
+            for category, docs in docs_by_category.items():
+                docs_text_parts.append(f"\n{category} Documents:")
+                docs_text_parts.extend(docs)
+            docs_text = "\n".join(docs_text_parts)
+        else:
+            docs_text = "Standard documentation will be required."
         
         prompt = f"""Generate a professional, warm, and personalized follow-up email for a mortgage broker to send to a client after their initial consultation.
 
 CLIENT NAME: {client_name}
 
 CONVERSATION TRANSCRIPT (for context):
-{transcript[:2000]}  # Limit transcript length
+{transcript[:2000]}
 
-MORTGAGE DETAILS DISCUSSED:
+LOAN DETAILS DISCUSSED:
 {mortgage_text}
 
-ACTION ITEMS:
+REQUIRED DOCUMENTS FOR {loan_type_display} LOAN:
+{docs_text}
+
+ACTION ITEMS FROM CONVERSATION:
 {action_items_text or "No specific action items identified"}
 
 Generate an email that:
 1. Thanks the client for their time
-2. Summarizes key points from the discussion
-3. Lists any documents or information needed from the client
-4. Outlines next steps
+2. Summarizes the loan details discussed (amount, type, term)
+3. Clearly lists ALL the required documents organized by category
+4. Explains the next steps in the loan process
 5. Maintains a professional but friendly tone
-6. Is concise but comprehensive
+6. Is comprehensive but well-organized
+
+The document list is CRITICAL - include every document from the list above in the email.
 
 Respond with a JSON object containing:
-- "subject": Email subject line
-- "body": Full email body (no salutation needed, start with the greeting)
+- "subject": Email subject line (mention the loan type)
+- "body": Full email body starting with "Dear {client_name},"
 
 Example format:
-{{"subject": "Following Up on Your Mortgage Consultation", "body": "Dear John,\\n\\nThank you for..."}}
+{{"subject": "Your {loan_type_display} Loan Application - Next Steps & Required Documents", "body": "Dear {client_name},\\n\\nThank you for..."}}
 """
         
         def _generate():

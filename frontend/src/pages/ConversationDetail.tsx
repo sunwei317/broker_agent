@@ -11,6 +11,7 @@ import {
     Play,
     RefreshCw,
     Save,
+    Send,
     User,
     X
 } from 'lucide-react'
@@ -31,6 +32,9 @@ export default function ConversationDetail() {
   const [editingSegment, setEditingSegment] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
   const [generatedEmail, setGeneratedEmail] = useState<{ subject: string; body: string } | null>(null)
+  const [editableSubject, setEditableSubject] = useState('')
+  const [editableBody, setEditableBody] = useState('')
+  const [emailSent, setEmailSent] = useState(false)
   const [highlightTerms, setHighlightTerms] = useState<string[]>([])
   const [hasEdits, setHasEdits] = useState(false)
   
@@ -137,6 +141,21 @@ export default function ConversationDetail() {
     mutationFn: () => processingApi.generateEmail(Number(id)).then(r => r.data),
     onSuccess: (data) => {
       setGeneratedEmail(data)
+      setEditableSubject(data.subject)
+      setEditableBody(data.body)
+      setEmailSent(false)
+    },
+  })
+  
+  const sendEmailMutation = useMutation({
+    mutationFn: () => processingApi.sendEmail(Number(id), {
+      subject: editableSubject,
+      body: editableBody,
+      broker_email: authUser?.email
+    }).then(r => r.data),
+    onSuccess: (data) => {
+      setEmailSent(true)
+      console.log('Email sent to:', data.sent_to)
     },
   })
   
@@ -573,10 +592,12 @@ export default function ConversationDetail() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="glass rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-auto"
+              className="glass rounded-2xl p-6 max-w-3xl w-full max-h-[85vh] overflow-auto"
             >
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-display text-xl font-semibold text-white">Generated Email</h2>
+                <h2 className="font-display text-xl font-semibold text-white">
+                  {emailSent ? '✓ Email Sent!' : 'Review & Send Email'}
+                </h2>
                 <button
                   onClick={() => setGeneratedEmail(null)}
                   className="p-2 text-midnight-400 hover:text-white"
@@ -584,26 +605,89 @@ export default function ConversationDetail() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm text-midnight-400">Subject</label>
-                  <p className="text-white font-medium mt-1">{generatedEmail.subject}</p>
+              
+              {emailSent ? (
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                    <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                  </div>
+                  <p className="text-white text-lg mb-2">Email sent successfully!</p>
+                  <p className="text-midnight-400 text-sm">
+                    The email has been sent to the client and you.
+                  </p>
+                  <Button 
+                    variant="secondary" 
+                    onClick={() => setGeneratedEmail(null)}
+                    className="mt-6"
+                  >
+                    Close
+                  </Button>
                 </div>
-                <div>
-                  <label className="text-sm text-midnight-400">Body</label>
-                  <pre className="mt-1 text-white whitespace-pre-wrap font-sans">
-                    {generatedEmail.body}
-                  </pre>
-                </div>
-              </div>
-              <div className="flex gap-3 mt-6">
-                <Button onClick={() => navigator.clipboard.writeText(generatedEmail.body)}>
-                  Copy to Clipboard
-                </Button>
-                <Button variant="secondary" onClick={() => setGeneratedEmail(null)}>
-                  Close
-                </Button>
-              </div>
+              ) : (
+                <>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm text-midnight-400 mb-1">Subject</label>
+                      <input
+                        type="text"
+                        value={editableSubject}
+                        onChange={(e) => setEditableSubject(e.target.value)}
+                        className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-gold-500/50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-midnight-400 mb-1">Body</label>
+                      <textarea
+                        value={editableBody}
+                        onChange={(e) => setEditableBody(e.target.value)}
+                        rows={16}
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white font-sans text-sm leading-relaxed resize-none focus:outline-none focus:border-gold-500/50"
+                      />
+                    </div>
+                    
+                    <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30 text-sm">
+                      <p className="text-blue-400">
+                        <Mail className="w-4 h-4 inline mr-2" />
+                        This email will be sent to:
+                      </p>
+                      <ul className="mt-2 text-midnight-300 space-y-1">
+                        {client?.email && (
+                          <li>• Client: {client.email}</li>
+                        )}
+                        {authUser?.email && (
+                          <li>• You: {authUser.email}</li>
+                        )}
+                      </ul>
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-3 mt-6">
+                    <Button 
+                      onClick={() => sendEmailMutation.mutate()}
+                      loading={sendEmailMutation.isPending}
+                      disabled={!client?.email}
+                    >
+                      <Send className="w-4 h-4" />
+                      Send Email
+                    </Button>
+                    <Button 
+                      variant="secondary"
+                      onClick={() => navigator.clipboard.writeText(editableBody)}
+                    >
+                      Copy to Clipboard
+                    </Button>
+                    <Button variant="ghost" onClick={() => setGeneratedEmail(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                  
+                  {!client?.email && (
+                    <p className="mt-3 text-sm text-amber-400">
+                      ⚠️ Client has no email address. Please add one in the client details.
+                    </p>
+                  )}
+                </>
+              )}
             </motion.div>
           </motion.div>
         )}

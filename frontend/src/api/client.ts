@@ -171,6 +171,11 @@ export const processingApi = {
   generateEmail: (id: number) => api.post<{ subject: string; body: string }>(
     `/processing/conversations/${id}/generate-email`
   ),
+  sendEmail: (id: number, data: { subject: string; body: string; broker_email?: string }) => 
+    api.post<{ message: string; sent_to: string[]; failed: string[]; client_name: string }>(
+      `/processing/conversations/${id}/send-email`,
+      data
+    ),
   listGoogleDriveFiles: (folderId?: string) => 
     api.get('/processing/google-drive/files', { params: { folder_id: folderId } }),
   importFromGoogleDrive: (fileId: string, clientId?: number) =>
